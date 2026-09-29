@@ -1,0 +1,36 @@
+{
+  "name": "omnium",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cliente de API, pruebas y carga en una sola aplicación de escritorio.",
+  "main": "dist-electron/main.cjs",
+  "author": "Omnium",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "demo": "node --experimental-strip-types src/demo/server.ts",
+    "test": "node --experimental-strip-types --test src/core/*.test.ts",
+    "check": "tsc --noEmit",
+    "build:electron": "node scripts/build-electron.mjs",
+    "build:renderer": "vite build",
+    "build": "npm run build:electron && npm run build:renderer",
+    "desktop": "npm run build:electron && concurrently -k -n web,app \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"wait-on http://127.0.0.1:5173 && OMNIUM_DEV_SERVER=http://127.0.0.1:5173 electron .\"",
+    "start": "npm run build && electron ."
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.2.4",
+    "electron": "^35.7.5",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "wait-on": "^8.0.5"
+  }
+}

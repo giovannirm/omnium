@@ -1,0 +1,176 @@
+export const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+
+export type HttpMethod = (typeof METHODS)[number];
+
+export type Pair = {
+  id: string;
+  key: string;
+  value: string;
+  enabled: boolean;
+};
+
+export type Auth =
+  | { type: "none" }
+  | { type: "bearer"; token: string }
+  | { type: "basic"; username: string; password: string }
+  | { type: "apikey"; key: string; value: string; in: "header" | "query" };
+
+export type Assertion = {
+  id: string;
+  source: "status" | "time" | "header" | "json" | "body";
+  op: "eq" | "neq" | "lt" | "lte" | "gt" | "gte" | "contains" | "exists";
+  path: string;
+  expected: string;
+};
+
+export type Extractor = {
+  id: string;
+  name: string;
+  source: "json" | "header";
+  path: string;
+};
+
+export type RequestModel = {
+  id: string;
+  name: string;
+  description: string;
+  method: HttpMethod;
+  url: string;
+  params: Pair[];
+  headers: Pair[];
+  bodyMode: "none" | "json" | "text" | "form";
+  bodyRaw: string;
+  form: Pair[];
+  auth: Auth;
+  assertions: Assertion[];
+  extractors: Extractor[];
+  timeoutMs: number;
+  followRedirects: boolean;
+};
+
+export type Environment = {
+  id: string;
+  name: string;
+  variables: Pair[];
+};
+
+export type Collection = {
+  id: string;
+  name: string;
+  variables: Pair[];
+  requests: RequestModel[];
+};
+
+export type HistoryEntry = {
+  id: string;
+  at: string;
+  requestId: string;
+  name: string;
+  method: string;
+  url: string;
+  status: number | null;
+  timeMs: number;
+  ok: boolean;
+  error: string | null;
+};
+
+export type Workspace = {
+  version: 1;
+  name: string;
+  activeEnvironmentId: string | null;
+  globals: Pair[];
+  environments: Environment[];
+  collections: Collection[];
+  history: HistoryEntry[];
+};
+
+export type AssertionResult = {
+  id: string;
+  passed: boolean;
+  message: string;
+};
+
+export type ExecutionResult = {
+  ok: boolean;
+  error: string | null;
+  requestId: string;
+  name: string;
+  method: string;
+  url: string;
+  finalUrl: string;
+  status: number | null;
+  statusText: string;
+  timeMs: number;
+  sizeBytes: number;
+  headers: { name: string; value: string }[];
+  bodyText: string;
+  bodyJson: unknown | null;
+  binary: boolean;
+  truncated: boolean;
+  assertions: AssertionResult[];
+  extracted: Record<string, string>;
+  missing: string[];
+};
+
+export type StepReport = {
+  requestId: string;
+  name: string;
+  passed: boolean;
+  result: ExecutionResult;
+};
+
+export type CollectionReport = {
+  steps: StepReport[];
+  passed: number;
+  failed: number;
+  variables: Record<string, string>;
+};
+
+export type LoadPlan = {
+  concurrency: number;
+  rampUpMs: number;
+  durationMs: number;
+  timeoutMs: number;
+  pauseMs: number;
+  maxErrorPct: number;
+  maxP95Ms: number;
+};
+
+export type LoadError = {
+  message: string;
+  count: number;
+};
+
+export type LoadSnapshot = {
+  elapsedMs: number;
+  inflight: number;
+  sent: number;
+  ok: number;
+  failed: number;
+  rps: number;
+  avgMs: number;
+  minMs: number;
+  maxMs: number;
+  p50: number;
+  p95: number;
+  p99: number;
+  errors: LoadError[];
+  samplesCapped: boolean;
+  stopped: boolean;
+};
+
+export type ExecutePayload = {
+  request: RequestModel;
+  variables: Record<string, string>;
+};
+
+export type RunPayload = {
+  requests: RequestModel[];
+  variables: Record<string, string>;
+};
+
+export type LoadPayload = {
+  request: RequestModel;
+  variables: Record<string, string>;
+  plan: LoadPlan;
+};
