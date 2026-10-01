@@ -45,10 +45,16 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 
 - `delivery_strategy`: `ask-on-risk` (default). Forecast > 400 líneas → chain strategy pedida.
 - `chain_strategy`: **`stacked-to-main`** (elegido por el usuario).
-- Slice 1 (PR 1): A1+A2+A3 — motor único y adaptadores.
-- Slice 2 (PR 2): A4+A5 — capa de estado en la UI.
-- Slice 3 (PR 3): Fase B.
-- Rama: `feat/engine-runtime` (se creó antes del primer commit; base `master`).
+- Rama: `feat/engine-runtime` (creada antes del primer commit; base `master`).
+- Un commit = una unidad de trabajo = un PR candidato. Cada slice ≤400 líneas autoradas:
+
+| Slice | Commits | Líneas autoradas |
+| --- | --- | --- |
+| PR 1 | `6de6c2e` chore (tooling + plan) | ~97 |
+| PR 2 | `854bc88` feat(engine): EngineRuntime | 182 |
+| PR 3 | `8e0db9a` refactor(server): router compartido | 395 |
+| PR 4 | `ac804b3` feat(server): standalone `npm run serve` | 150 |
+| PR 5 | `d828a8f` refactor(electron): IPC delgado | 85 |
 
 ## Criterios de aceptación
 

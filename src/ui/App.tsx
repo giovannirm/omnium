@@ -1,19 +1,47 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getClient } from "../client.ts";
-import { stepPassed } from "../core/assertions.ts";
 import type { CookieView } from "../core/cookies.ts";
 import { parseCurl } from "../core/curl.ts";
-import { createRequest, uid } from "../core/factory.ts";
 import { parseWorkspace } from "../core/files.ts";
 import { importPostman } from "../core/postman.ts";
 import { toFetch, toPython } from "../core/snippets.ts";
 import { toCurl } from "../core/execute.ts";
-import type { Collection, Environment, ExecutionResult, LoadPlan, LoadSnapshot, Pair, RequestModel, Workspace } from "../core/types.ts";
+import type { Environment, ExecutionResult, LoadPlan, LoadSnapshot, Pair, RequestModel, Workspace } from "../core/types.ts";
 import { resolveVariables } from "../core/variables.ts";
 import { Editor, EnvironmentEditor } from "./Editor.tsx";
 import { Outcome } from "./Outcome.tsx";
 import { CommandPalette, type Command } from "./palette.tsx";
-import { Sidebar, type Selection } from "./Sidebar.tsx";
+import { Sidebar } from "./Sidebar.tsx";
+import {
+  activeEnvironment,
+  appendCollection,
+  appendCollectionRaw,
+  appendEnvironment,
+  appendRequest,
+  closeTabAt,
+  defaultSelection,
+  diffVars,
+  duplicateRequest,
+  failedResult,
+  historyEntry,
+  locate,
+  moveRequestIn,
+  openTab,
+  pruneSelection,
+  pruneTabs,
+  removeCollection,
+  removeEnvironment,
+  removeRequestIn,
+  setCollectionVariables,
+  setGlobals,
+  toTab,
+  updateCollection,
+  updateEnvironmentIn,
+  updateRequestIn,
+  withHistory,
+  type Selection,
+  type Tab,
+} from "./state/model.ts";
 import { Mark, PairTable } from "./widgets.tsx";
 
 type LoadState = { running: boolean; points: number[]; snap: LoadSnapshot | null };
@@ -41,7 +69,7 @@ export function App() {
   const [modal, setModal] = useState<null | "help" | "curl" | "palette" | "snippet" | "cookies">(null);
   const [compact, setCompact] = useState(false);
   const [cookieRows, setCookieRows] = useState<CookieView[]>([]);
-  const [tabs, setTabs] = useState<Array<{ collectionId: string; requestId: string }>>([]);
+  const [tabs, setTabs] = useState<Tab[]>([]);
   const [sideW, setSideW] = useState(286);
   const [outW, setOutW] = useState(430);
   const [curlText, setCurlText] = useState("");
@@ -66,12 +94,11 @@ export function App() {
       if (!live) return;
       setWorkspace(loaded.workspace);
       setDir(loaded.dir);
-      const collection = loaded.workspace.collections[0];
-      const request = collection?.requests[0];
-      const next = collection && request ? { kind: "request" as const, collectionId: collection.id, requestId: request.id } : null;
+      const next = defaultSelection(loaded.workspace);
       if (next) {
         setSelection(next);
-        setTabs([next]);
+        const tab = toTab(next);
+        if (tab) setTabs([tab]);
       }
       if (loaded.warning) {
         setToast(loaded.warning);
@@ -177,21 +204,8 @@ export function App() {
 
   useEffect(() => {
     if (!workspace) return;
-    const alive = new Set(workspace.collections.flatMap((collection) => collection.requests.map((request) => request.id)));
-    setTabs((current) => {
-      const next = current.filter((tab) => alive.has(tab.requestId));
-      return next.length === current.length ? current : next;
-    });
-    setSelection((current) => {
-      if (!current || current.kind === "globals") return current;
-      if (current.kind === "request") {
-        const collection = workspace.collections.find((item) => item.id === current.collectionId);
-        if (!collection?.requests.some((request) => request.id === current.requestId)) return null;
-      }
-      if (current.kind === "collection" && !workspace.collections.some((item) => item.id === current.collectionId)) return null;
-      if (current.kind === "environment" && !workspace.environments.some((item) => item.id === current.environmentId)) return null;
-      return current;
-    });
+    setTabs((current) => pruneTabs(current, workspace));
+    setSelection((current) => pruneSelection(current, workspace));
   }, [workspace]);
 
   useEffect(() => {
@@ -204,7 +218,7 @@ export function App() {
   }, [client]);
 
   const selected = useMemo(() => locate(workspace, selection), [workspace, selection]);
-  const environment = workspace?.environments.find((item) => item.id === workspace.activeEnvironmentId) ?? workspace?.environments[0] ?? null;
+  const environment = activeEnvironment(workspace);
   const activeCollection = selected && "collection" in selected ? selected.collection : null;
   const variables = resolveVariables(environment, runtime, {
     globals: workspace?.globals ?? [],
@@ -309,7 +323,9 @@ export function App() {
           onSelect={choose}
           onCreateCollection={createCollection}
           onCreateRequest={createRequestIn}
-          onRenameCollection={(collectionId, name) => updateCollection(collectionId, (collection) => ({ ...collection, name }))}
+          onRenameCollection={(collectionId, name) =>
+            setWorkspace(updateCollection(workspace, collectionId, (collection) => ({ ...collection, name })))
+          }
           onDeleteCollection={deleteCollection}
           onTestCollection={(collectionId) => void testCollection(collectionId)}
           onCreateEnvironment={createEnvironment}
@@ -360,7 +376,7 @@ export function App() {
                 setModal("curl");
               }}
               onDelete={() => deleteRequest(selected.collection.id, selected.request.id)}
-              onDuplicate={() => duplicateRequest(selected.collection.id, selected.request)}
+                onDuplicate={() => duplicateRequestIn(selected.collection.id, selected.request)}
               onMove={(delta) => moveRequest(selected.collection.id, selected.request.id, delta)}
               onClearRuntime={() => setRuntime({})}
             />
@@ -377,14 +393,14 @@ export function App() {
               title="Variables globales"
               hint="Valen en todas las colecciones. Un ambiente o la colección pueden reemplazarlas."
               rows={workspace.globals}
-              onChange={(globals) => setWorkspace({ ...workspace, globals })}
+              onChange={(globals) => setWorkspace(setGlobals(workspace, globals))}
             />
           ) : selected?.kind === "collection" ? (
             <VariableStage
               title={selected.collection.name}
               hint="Estas variables viven en la colección y pisan a las del ambiente."
               rows={selected.collection.variables}
-              onChange={(rows) => updateCollection(selected.collection.id, (collection) => ({ ...collection, variables: rows }))}
+              onChange={(rows) => setWorkspace(setCollectionVariables(workspace, selected.collection.id, rows))}
             />
           ) : (
             <section className="stage empty-stage">
@@ -584,133 +600,72 @@ export function App() {
   }
 
   function remember(request: RequestModel, result: ExecutionResult) {
-    setWorkspace((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        history: [
-          {
-            id: uid("hist"),
-            at: new Date().toISOString(),
-            requestId: request.id,
-            name: request.name,
-            method: request.method,
-            url: result.url || request.url,
-            status: result.status,
-            timeMs: result.timeMs,
-            ok: stepPassed(result),
-            error: result.error,
-          },
-          ...current.history,
-        ].slice(0, 40),
-      };
-    });
+    setWorkspace((current) => (current ? withHistory(current, historyEntry(request, result)) : current));
   }
 
   function createCollection() {
     if (!workspace) return;
-    const id = uid("col");
-    const request = createRequest({ name: "Nueva petición", method: "GET", url: "" });
-    setWorkspace({
-      ...workspace,
-      collections: [...workspace.collections, { id, name: "Nueva colección", variables: [], requests: [request] }],
-    });
-    choose({ kind: "request", collectionId: id, requestId: request.id });
+    const next = appendCollection(workspace);
+    setWorkspace(next.workspace);
+    choose(next.selection);
   }
 
   function createRequestIn(collectionId: string) {
-    const request = createRequest();
-    updateCollection(collectionId, (collection) => ({ ...collection, requests: [...collection.requests, request] }));
-    choose({ kind: "request", collectionId, requestId: request.id });
+    if (!workspace) return;
+    const next = appendRequest(workspace, collectionId);
+    setWorkspace(next.workspace);
+    choose(next.selection);
   }
 
   function deleteCollection(collectionId: string) {
     if (!workspace) return;
     if (!window.confirm("¿Eliminar esta colección?")) return;
-    setWorkspace({ ...workspace, collections: workspace.collections.filter((collection) => collection.id !== collectionId) });
+    setWorkspace(removeCollection(workspace, collectionId));
   }
 
   function deleteRequest(collectionId: string, requestId: string) {
     if (!window.confirm("¿Eliminar esta petición?")) return;
-    updateCollection(collectionId, (collection) => ({
-      ...collection,
-      requests: collection.requests.filter((request) => request.id !== requestId),
-    }));
+    setWorkspace((current) => (current ? removeRequestIn(current, collectionId, requestId) : current));
     closeTab(requestId);
   }
 
-  function duplicateRequest(collectionId: string, request: RequestModel) {
-    const copy = createRequest({
-      ...structuredClone(request),
-      id: uid("req"),
-      name: `${request.name} copia`,
-      assertions: request.assertions.map((item) => ({ ...item, id: uid("assert") })),
-      extractors: request.extractors.map((item) => ({ ...item, id: uid("extract") })),
-    });
-    updateCollection(collectionId, (collection) => {
-      const index = collection.requests.findIndex((item) => item.id === request.id);
-      const requests = [...collection.requests];
-      requests.splice(index + 1, 0, copy);
-      return { ...collection, requests };
-    });
-    choose({ kind: "request", collectionId, requestId: copy.id });
+  function duplicateRequestIn(collectionId: string, request: RequestModel) {
+    if (!workspace) return;
+    const next = duplicateRequest(workspace, collectionId, request.id);
+    if (!next) return;
+    setWorkspace(next.workspace);
+    choose(next.selection);
   }
 
   function moveRequest(collectionId: string, requestId: string, delta: number) {
-    updateCollection(collectionId, (collection) => {
-      const index = collection.requests.findIndex((item) => item.id === requestId);
-      const next = index + delta;
-      if (index < 0 || next < 0 || next >= collection.requests.length) return collection;
-      const requests = [...collection.requests];
-      const [item] = requests.splice(index, 1);
-      if (!item) return collection;
-      requests.splice(next, 0, item);
-      return { ...collection, requests };
-    });
+    setWorkspace((current) => (current ? moveRequestIn(current, collectionId, requestId, delta) : current));
   }
 
   function createEnvironment() {
     if (!workspace) return;
-    const environment: Environment = { id: uid("env"), name: "Nuevo ambiente", variables: [] };
-    setWorkspace({ ...workspace, environments: [...workspace.environments, environment] });
-    setSelection({ kind: "environment", environmentId: environment.id });
+    const next = appendEnvironment(workspace);
+    setWorkspace(next.workspace);
+    setSelection(next.selection);
   }
 
   function deleteEnvironment(environmentId: string) {
     if (!workspace) return;
-    if (workspace.environments.length < 2) {
+    const next = removeEnvironment(workspace, environmentId);
+    if (!next) {
       notify("Deja al menos un ambiente");
       return;
     }
-    const environments = workspace.environments.filter((item) => item.id !== environmentId);
-    setWorkspace({
-      ...workspace,
-      environments,
-      activeEnvironmentId: workspace.activeEnvironmentId === environmentId ? (environments[0]?.id ?? null) : workspace.activeEnvironmentId,
-    });
+    setWorkspace(next);
     setSelection(null);
   }
 
   function updateRequest(collectionId: string, request: RequestModel) {
-    updateCollection(collectionId, (collection) => ({
-      ...collection,
-      requests: collection.requests.map((item) => (item.id === request.id ? request : item)),
-    }));
-  }
-
-  function updateCollection(collectionId: string, change: (collection: Collection) => Collection) {
-    setWorkspace((current) => {
-      if (!current) return current;
-      return { ...current, collections: current.collections.map((collection) => (collection.id === collectionId ? change(collection) : collection)) };
-    });
+    setWorkspace((current) => (current ? updateRequestIn(current, collectionId, request) : current));
   }
 
   function updateEnvironment(environment: Environment) {
     if (!workspace) return;
-    setWorkspace({
-      ...workspace,
-      environments: workspace.environments.map((item) => (item.id === environment.id ? environment : item)),
-    });
+    setWorkspace(updateEnvironmentIn(workspace, environment));
   }
 
   async function openArea() {
@@ -736,7 +691,7 @@ export function App() {
       const raw = JSON.parse(await file.text()) as unknown;
       if (importKind.current === "postman") {
         const collection = importPostman(raw);
-        setWorkspace((current) => (current ? { ...current, collections: [...current.collections, collection] } : current));
+        setWorkspace((current) => (current ? appendCollectionRaw(current, collection) : current));
         const request = collection.requests[0];
         if (request) choose({ kind: "request", collectionId: collection.id, requestId: request.id });
         notify(`Importada la colección ${collection.name}`);
@@ -753,22 +708,13 @@ export function App() {
 
   function choose(next: Selection) {
     setSelection(next);
-    if (next.kind === "request") {
-      setTabs((current) => {
-        const without = current.filter((tab) => tab.requestId !== next.requestId);
-        return [...without, next].slice(-10);
-      });
-    }
+    if (next.kind === "request") setTabs((current) => openTab(current, next));
   }
 
   function closeTab(requestId: string) {
-    const index = tabs.findIndex((tab) => tab.requestId === requestId);
-    const next = tabs.filter((tab) => tab.requestId !== requestId);
-    setTabs(next);
-    if (selection?.kind === "request" && selection.requestId === requestId) {
-      const neighbor = next[Math.min(index, next.length - 1)] ?? null;
-      setSelection(neighbor ? { kind: "request", collectionId: neighbor.collectionId, requestId: neighbor.requestId } : null);
-    }
+    const closed = closeTabAt(tabs, selection, requestId);
+    setTabs(closed.tabs);
+    if (closed.selection !== undefined) setSelection(closed.selection);
   }
 
   function beginImport(kind: "area" | "postman") {
@@ -831,11 +777,10 @@ export function App() {
     setResults({});
     setReport(null);
     setRuntime({});
-    const collection = next.collections[0];
-    const request = collection?.requests[0];
-    const selectedNext = collection && request ? { kind: "request" as const, collectionId: collection.id, requestId: request.id } : null;
-    setSelection(selectedNext);
-    setTabs(selectedNext ? [selectedNext] : []);
+    const picked = defaultSelection(next);
+    setSelection(picked);
+    const tab = toTab(picked);
+    setTabs(tab ? [tab] : []);
   }
 
   async function refreshCookies() {
@@ -857,55 +802,6 @@ export function App() {
     setToast(message);
     window.setTimeout(() => setToast((current) => (current === message ? null : current)), 3200);
   }
-}
-
-function failedResult(request: RequestModel, message: string): ExecutionResult {
-  return {
-    ok: false,
-    error: message,
-    requestId: request.id,
-    name: request.name,
-    method: request.method,
-    url: request.url,
-    finalUrl: request.url,
-    status: null,
-    statusText: "",
-    timeMs: 0,
-    sizeBytes: 0,
-    headers: [],
-    bodyText: "",
-    bodyJson: null,
-    binary: false,
-    truncated: false,
-    assertions: [],
-    extracted: {},
-    missing: [],
-  };
-}
-
-function locate(workspace: Workspace | null, selection: Selection | null) {
-  if (!workspace || !selection) return null;
-  if (selection.kind === "globals") return { kind: "globals" as const };
-  if (selection.kind === "environment") {
-    const environment = workspace.environments.find((item) => item.id === selection.environmentId);
-    return environment ? { kind: "environment" as const, environment } : null;
-  }
-  if (selection.kind === "collection") {
-    const collection = workspace.collections.find((item) => item.id === selection.collectionId);
-    return collection ? { kind: "collection" as const, collection } : null;
-  }
-  const collection = workspace.collections.find((item) => item.id === selection.collectionId);
-  const request = collection?.requests.find((item) => item.id === selection.requestId);
-  if (!collection || !request) return null;
-  return { kind: "request" as const, collection, request };
-}
-
-function diffVars(before: Record<string, string>, after: Record<string, string>): Record<string, string> {
-  const changed: Record<string, string> = {};
-  for (const [key, value] of Object.entries(after)) {
-    if (before[key] !== value) changed[key] = value;
-  }
-  return changed;
 }
 
 function CookiesDialog({ rows, onClose, onClear }: { rows: CookieView[]; onClose: () => void; onClear: () => void }) {
