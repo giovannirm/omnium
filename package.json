@@ -11,6 +11,7 @@
     "demo": "node --experimental-strip-types src/demo/server.ts",
     "test": "node --experimental-strip-types --test src/core/*.test.ts src/server/*.test.ts",
     "check": "tsc --noEmit",
+    "serve": "node --experimental-strip-types src/server/serve.ts",
     "build:electron": "node scripts/build-electron.mjs",
     "build:renderer": "vite build",
     "build": "npm run build:electron && npm run build:renderer",
