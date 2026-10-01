@@ -1,24 +1,19 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from "electron";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { CookieJar } from "../src/core/cookies.ts";
+import { EngineRuntime } from "../src/core/engine.ts";
 import { ensureWorkspace, saveToDir } from "../src/core/disk.ts";
-import { executeRequest } from "../src/core/execute.ts";
 import { parseWorkspace } from "../src/core/files.ts";
-import { clampPlan, runLoad } from "../src/core/load.ts";
-import { runCollection } from "../src/core/runner.ts";
 import { sampleWorkspace } from "../src/core/sample.ts";
 import type { ExecutePayload, LoadPayload, RunPayload, Workspace } from "../src/core/types.ts";
 
 declare const __dirname: string;
 
 const here = __dirname;
-const jar = new CookieJar();
+const runtime = new EngineRuntime();
 let currentDir = "";
 let settingsPath = "";
 let mainWindow: BrowserWindow | null = null;
-let loadController: AbortController | null = null;
-let httpController: AbortController | null = null;
 let latestSave: { workspace: Workspace; dir: string } | null = null;
 let saveChain: Promise<void> = Promise.resolve();
 
@@ -148,7 +143,7 @@ ipcMain.handle("workspace:open", async () => {
   }
   currentDir = dir;
   await remember(dir);
-  jar.clear();
+  runtime.clearCookies();
   await saveChain.catch(() => undefined);
   return { dir, workspace: await ensureWorkspace(dir) };
 });
@@ -175,7 +170,7 @@ ipcMain.handle("workspace:create", async () => {
   await saveToDir(dir, workspace);
   currentDir = dir;
   await remember(dir);
-  jar.clear();
+  runtime.clearCookies();
   await saveChain.catch(() => undefined);
   return { dir, workspace };
 });
@@ -195,86 +190,38 @@ ipcMain.handle("workspace:export", async (_event, raw: unknown) => {
   return true;
 });
 
-ipcMain.handle("http:execute", async (_event, payload: ExecutePayload) => {
-  const controller = beginHttp();
-  try {
-    return await executeRequest({
-      request: payload.request,
-      variables: payload.variables,
-      jar,
-      persistCookies: true,
-      signal: controller.signal,
-    });
-  } finally {
-    if (httpController === controller) httpController = null;
-  }
-});
+ipcMain.handle("http:execute", async (_event, payload: ExecutePayload) => runtime.execute(payload));
 
-ipcMain.handle("http:run", async (_event, payload: RunPayload) => {
-  const controller = beginHttp();
-  try {
-    return await runCollection({ requests: payload.requests, variables: payload.variables, jar, signal: controller.signal });
-  } finally {
-    if (httpController === controller) httpController = null;
-  }
-});
+ipcMain.handle("http:run", async (_event, payload: RunPayload) => runtime.run(payload));
 
 ipcMain.handle("http:cancel", async () => {
-  httpController?.abort();
+  runtime.cancelHttp();
 });
 
 ipcMain.handle("load:start", async (event, payload: LoadPayload) => {
-  loadController?.abort();
-  const controller = new AbortController();
-  loadController = controller;
-  const frozen = jar.clone();
-  const plan = clampPlan(payload.plan);
-  const snap = await runLoad({
-    plan,
-    signal: controller.signal,
-    onTick: (tick) => {
-      if (!event.sender.isDestroyed()) event.sender.send("load:tick", tick);
-    },
-    runOnce: async (signal) => {
-      const result = await executeRequest({
-        request: { ...payload.request, timeoutMs: plan.timeoutMs },
-        variables: payload.variables,
-        jar: frozen,
-        persistCookies: false,
-        captureBody: false,
-        signal,
-      });
-      return {
-        ok: !result.error && result.status !== null && result.status < 400,
-        timeMs: result.timeMs,
-        status: result.status,
-        error: result.error,
-      };
-    },
+  const send = (channel: "load:tick" | "load:done", snapshot: unknown) => {
+    if (!event.sender.isDestroyed()) event.sender.send(channel, snapshot);
+  };
+  const snap = await runtime.startLoad(payload, {
+    onTick: (tick) => send("load:tick", tick),
   });
-  if (!event.sender.isDestroyed()) event.sender.send("load:done", snap);
+  send("load:done", snap);
   return snap;
 });
 
 ipcMain.handle("load:stop", async () => {
-  loadController?.abort();
+  runtime.stopLoad();
 });
 
-ipcMain.handle("cookies:list", async () => jar.list());
+ipcMain.handle("cookies:list", async () => runtime.listCookies());
 
 ipcMain.handle("cookies:clear", async () => {
-  jar.clear();
+  runtime.clearCookies();
 });
 
 ipcMain.handle("app:setTitle", async (_event, title: string) => {
   mainWindow?.setTitle(title);
 });
-
-function beginHttp(): AbortController {
-  const controller = new AbortController();
-  httpController = controller;
-  return controller;
-}
 
 function allowNavigation(target: string): boolean {
   const dev = process.env.OMNIUM_DEV_SERVER;
