@@ -7,6 +7,7 @@ import { stepPassed } from "./assertions.ts";
 import { CookieJar } from "./cookies.ts";
 import { parseCurl } from "./curl.ts";
 import { loadFromDir, saveToDir } from "./disk.ts";
+import { EngineRuntime } from "./engine.ts";
 import { executeRequest, toCurl } from "./execute.ts";
 import { filesToWorkspace, workspaceToFiles } from "./files.ts";
 import { lookup } from "./jsonpath.ts";
@@ -147,4 +148,63 @@ test("exporta curl con la url ya resuelta", () => {
   if (!request) throw new Error("falta la petición");
   const curl = toCurl(request, { baseUrl: "http://127.0.0.1:4321" });
   assert.match(curl, /http:\/\/127\.0\.0\.1:4321\/health/);
+});
+
+test("el runtime comparte cookies entre ejecuciones y las limpia", async () => {
+  const runtime = new EngineRuntime();
+  const base = `http://127.0.0.1:${demo.port}`;
+  const opened = await runtime.execute({
+    request: {
+      ...sampleWorkspace().collections[0]!.requests[0]!,
+      url: `${base}/session`,
+      method: "POST",
+      assertions: [],
+      bodyMode: "none",
+    },
+    variables: {},
+  });
+  assert.equal(opened.status, 200);
+  assert.equal(runtime.listCookies().length > 0, true);
+  const read = await runtime.execute({
+    request: {
+      ...sampleWorkspace().collections[0]!.requests[0]!,
+      url: `${base}/session`,
+      method: "GET",
+      assertions: [],
+    },
+    variables: {},
+  });
+  assert.equal(read.status, 200);
+  runtime.clearCookies();
+  assert.equal(runtime.listCookies().length, 0);
+});
+
+test("cancelHttp corta una petición en vuelo", async () => {
+  const runtime = new EngineRuntime();
+  const request = sampleWorkspace().collections[0]?.requests[0];
+  if (!request) throw new Error("falta la petición");
+  const pending = runtime.execute({
+    request: { ...request, url: `http://127.0.0.1:${demo.port}/delay?ms=1500`, assertions: [] },
+    variables: {},
+  });
+  setTimeout(() => runtime.cancelHttp(), 50);
+  const result = await pending;
+  assert.equal(result.error, "Petición cancelada");
+});
+
+test("stopLoad corta una carga y devuelve stopped", async () => {
+  const runtime = new EngineRuntime();
+  const request = sampleWorkspace().collections[0]?.requests[0];
+  if (!request) throw new Error("falta la petición");
+  const pending = runtime.startLoad({
+    request: { ...request, url: `http://127.0.0.1:${demo.port}/health`, assertions: [] },
+    variables: {},
+    plan: { concurrency: 2, rampUpMs: 0, durationMs: 4000, timeoutMs: 2000, pauseMs: 0, maxErrorPct: 5, maxP95Ms: 0 },
+  });
+  setTimeout(() => runtime.stopLoad(), 250);
+  const snap = await pending;
+  assert.equal(snap.stopped, true);
+  assert.ok(snap.elapsedMs < 3000);
+  assert.ok(snap.sent > 0);
+  assert.equal(snap.failed, 0);
 });
