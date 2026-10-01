@@ -6,7 +6,7 @@ import { parseWorkspace } from "../core/files.ts";
 import { importPostman } from "../core/postman.ts";
 import { toFetch, toPython } from "../core/snippets.ts";
 import { toCurl } from "../core/execute.ts";
-import type { Environment, ExecutionResult, LoadPlan, LoadSnapshot, Pair, RequestModel, Workspace } from "../core/types.ts";
+import type { ExecutionResult, LoadPlan, LoadSnapshot, Pair, RequestModel, Workspace } from "../core/types.ts";
 import { resolveVariables } from "../core/variables.ts";
 import { Editor, EnvironmentEditor } from "./Editor.tsx";
 import { Outcome } from "./Outcome.tsx";
@@ -14,43 +14,53 @@ import { CommandPalette, type Command } from "./palette.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import {
   activeEnvironment,
-  appendCollection,
   appendCollectionRaw,
-  appendEnvironment,
-  appendRequest,
-  closeTabAt,
-  defaultSelection,
   diffVars,
-  duplicateRequest,
   failedResult,
   historyEntry,
   locate,
-  moveRequestIn,
-  openTab,
-  pruneSelection,
-  pruneTabs,
-  removeCollection,
-  removeEnvironment,
-  removeRequestIn,
   setCollectionVariables,
   setGlobals,
-  toTab,
   updateCollection,
-  updateEnvironmentIn,
-  updateRequestIn,
   withHistory,
-  type Selection,
-  type Tab,
 } from "./state/model.ts";
+import { useAppState, type Modal } from "./state/useAppState.ts";
 import { Mark, PairTable } from "./widgets.tsx";
 
 type LoadState = { running: boolean; points: number[]; snap: LoadSnapshot | null };
 
 export function App() {
   const client = useMemo(() => getClient(), []);
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [dir, setDir] = useState<string | null>(null);
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const app = useAppState({ client });
+  const {
+    workspace,
+    setWorkspace,
+    dir,
+    saveLabel,
+    saveNow,
+    adoptWorkspace,
+    exportArea,
+    selection,
+    tabs,
+    choose,
+    closeTab,
+    createCollection,
+    createRequestIn,
+    deleteCollection,
+    deleteRequest,
+    duplicateRequestIn,
+    moveRequest,
+    updateRequest,
+    createEnvironment,
+    deleteEnvironment,
+    updateEnvironment,
+    toast,
+    notify,
+    cookieRows,
+    refreshCookies,
+    forgetCookies,
+  } = app;
+
   const [results, setResults] = useState<Record<string, ExecutionResult>>({});
   const [report, setReport] = useState<{ collectionId: string; report: Awaited<ReturnType<typeof client.run>> } | null>(null);
   const [pane, setPane] = useState<"response" | "tests" | "load">("response");
@@ -65,71 +75,24 @@ export function App() {
     maxP95Ms: 500,
   });
   const [pending, setPending] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [modal, setModal] = useState<null | "help" | "curl" | "palette" | "snippet" | "cookies">(null);
+  const [modal, setModal] = useState<Modal>(null);
   const [compact, setCompact] = useState(false);
-  const [cookieRows, setCookieRows] = useState<CookieView[]>([]);
-  const [tabs, setTabs] = useState<Tab[]>([]);
   const [sideW, setSideW] = useState(286);
   const [outW, setOutW] = useState(430);
   const [curlText, setCurlText] = useState("");
-  const [saveLabel, setSaveLabel] = useState("Listo");
   const [query, setQuery] = useState("");
   const [runtime, setRuntime] = useState<Record<string, string>>({});
   const importRef = useRef<HTMLInputElement>(null);
   const importKind = useRef<"area" | "postman">("area");
-  const hydrated = useRef(false);
   const busy = useRef(false);
   const sendRef = useRef<() => void>(() => undefined);
   const modalRef = useRef(modal);
-  const workspaceRef = useRef(workspace);
-  const notifyRef = useRef<(message: string) => void>(() => undefined);
   const commandKey = client.platform === "darwin" ? "⌘" : "Ctrl+";
 
   useEffect(() => {
     document.body.classList.toggle("is-desktop", client.desktop);
     document.body.dataset.platform = client.platform;
-    let live = true;
-    void client.load().then((loaded) => {
-      if (!live) return;
-      setWorkspace(loaded.workspace);
-      setDir(loaded.dir);
-      const next = defaultSelection(loaded.workspace);
-      if (next) {
-        setSelection(next);
-        const tab = toTab(next);
-        if (tab) setTabs([tab]);
-      }
-      if (loaded.warning) {
-        setToast(loaded.warning);
-        window.setTimeout(() => setToast((current) => (current === loaded.warning ? null : current)), 5200);
-      }
-      void refreshCookies();
-    });
-    return () => {
-      live = false;
-    };
   }, [client]);
-
-  useEffect(() => {
-    if (!workspace) return;
-    void client.setTitle(`Omnium — ${workspace.name}`);
-    if (!hydrated.current) {
-      hydrated.current = true;
-      return;
-    }
-    setSaveLabel("Guardando…");
-    const timer = setTimeout(() => {
-      void client
-        .save(workspace)
-        .then(() => setSaveLabel("Guardado"))
-        .catch(() => {
-          setSaveLabel("No se pudo guardar");
-          notify("No se pudo guardar el área de trabajo");
-        });
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [workspace, client]);
 
   useEffect(() => {
     const offTick = client.onLoadTick((snap) => {
@@ -181,16 +144,7 @@ export function App() {
       }
       if (event.key.toLowerCase() === "s") {
         event.preventDefault();
-        const current = workspaceRef.current;
-        if (!current) return;
-        setSaveLabel("Guardando…");
-        void client
-          .save(current)
-          .then(() => setSaveLabel("Guardado"))
-          .catch(() => {
-            setSaveLabel("No se pudo guardar");
-            notifyRef.current("No se pudo guardar el área de trabajo");
-          });
+        saveNow();
         return;
       }
       if (event.key === "Enter" && !modalRef.current) {
@@ -200,21 +154,6 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [client]);
-
-  useEffect(() => {
-    if (!workspace) return;
-    setTabs((current) => pruneTabs(current, workspace));
-    setSelection((current) => pruneSelection(current, workspace));
-  }, [workspace]);
-
-  useEffect(() => {
-    const flush = () => {
-      const current = workspaceRef.current;
-      if (current) void client.save(current);
-    };
-    window.addEventListener("beforeunload", flush);
-    return () => window.removeEventListener("beforeunload", flush);
   }, [client]);
 
   const selected = useMemo(() => locate(workspace, selection), [workspace, selection]);
@@ -229,8 +168,6 @@ export function App() {
     void send();
   };
   modalRef.current = modal;
-  workspaceRef.current = workspace;
-  notifyRef.current = notify;
 
   if (!workspace) {
     return (
@@ -376,7 +313,7 @@ export function App() {
                 setModal("curl");
               }}
               onDelete={() => deleteRequest(selected.collection.id, selected.request.id)}
-                onDuplicate={() => duplicateRequestIn(selected.collection.id, selected.request)}
+                onDuplicate={() => duplicateRequestIn(selected.collection.id, selected.request.id)}
               onMove={(delta) => moveRequest(selected.collection.id, selected.request.id, delta)}
               onClearRuntime={() => setRuntime({})}
             />
@@ -603,87 +540,14 @@ export function App() {
     setWorkspace((current) => (current ? withHistory(current, historyEntry(request, result)) : current));
   }
 
-  function createCollection() {
-    if (!workspace) return;
-    const next = appendCollection(workspace);
-    setWorkspace(next.workspace);
-    choose(next.selection);
-  }
-
-  function createRequestIn(collectionId: string) {
-    if (!workspace) return;
-    const next = appendRequest(workspace, collectionId);
-    setWorkspace(next.workspace);
-    choose(next.selection);
-  }
-
-  function deleteCollection(collectionId: string) {
-    if (!workspace) return;
-    if (!window.confirm("¿Eliminar esta colección?")) return;
-    setWorkspace(removeCollection(workspace, collectionId));
-  }
-
-  function deleteRequest(collectionId: string, requestId: string) {
-    if (!window.confirm("¿Eliminar esta petición?")) return;
-    setWorkspace((current) => (current ? removeRequestIn(current, collectionId, requestId) : current));
-    closeTab(requestId);
-  }
-
-  function duplicateRequestIn(collectionId: string, request: RequestModel) {
-    if (!workspace) return;
-    const next = duplicateRequest(workspace, collectionId, request.id);
-    if (!next) return;
-    setWorkspace(next.workspace);
-    choose(next.selection);
-  }
-
-  function moveRequest(collectionId: string, requestId: string, delta: number) {
-    setWorkspace((current) => (current ? moveRequestIn(current, collectionId, requestId, delta) : current));
-  }
-
-  function createEnvironment() {
-    if (!workspace) return;
-    const next = appendEnvironment(workspace);
-    setWorkspace(next.workspace);
-    setSelection(next.selection);
-  }
-
-  function deleteEnvironment(environmentId: string) {
-    if (!workspace) return;
-    const next = removeEnvironment(workspace, environmentId);
-    if (!next) {
-      notify("Deja al menos un ambiente");
-      return;
-    }
-    setWorkspace(next);
-    setSelection(null);
-  }
-
-  function updateRequest(collectionId: string, request: RequestModel) {
-    setWorkspace((current) => (current ? updateRequestIn(current, collectionId, request) : current));
-  }
-
-  function updateEnvironment(environment: Environment) {
-    if (!workspace) return;
-    setWorkspace(updateEnvironmentIn(workspace, environment));
-  }
-
   async function openArea() {
-    const opened = await client.open();
-    if (!opened) return;
-    adopt(opened.workspace, opened.dir);
+    const opened = await app.openArea();
+    if (opened) adopt(opened.workspace, opened.dir);
   }
 
   async function createArea() {
-    const created = await client.create();
-    if (!created) return;
-    adopt(created.workspace, created.dir);
-  }
-
-  async function exportArea() {
-    if (!workspace) return;
-    const done = await client.exportFile(workspace);
-    if (done) notify("Área exportada");
+    const created = await app.createArea();
+    if (created) adopt(created.workspace, created.dir);
   }
 
   async function importArea(file: File) {
@@ -704,17 +568,6 @@ export function App() {
     } catch (error) {
       notify(error instanceof SyntaxError ? "El archivo no es JSON" : error instanceof Error ? error.message : "No se pudo importar");
     }
-  }
-
-  function choose(next: Selection) {
-    setSelection(next);
-    if (next.kind === "request") setTabs((current) => openTab(current, next));
-  }
-
-  function closeTab(requestId: string) {
-    const closed = closeTabAt(tabs, selection, requestId);
-    setTabs(closed.tabs);
-    if (closed.selection !== undefined) setSelection(closed.selection);
   }
 
   function beginImport(kind: "area" | "postman") {
@@ -771,36 +624,10 @@ export function App() {
   }
 
   function adopt(next: Workspace, nextDir: string | null, persist = false) {
-    if (!persist) hydrated.current = false;
-    setWorkspace(next);
-    setDir(nextDir);
+    adoptWorkspace(next, nextDir, persist);
     setResults({});
     setReport(null);
     setRuntime({});
-    const picked = defaultSelection(next);
-    setSelection(picked);
-    const tab = toTab(picked);
-    setTabs(tab ? [tab] : []);
-  }
-
-  async function refreshCookies() {
-    try {
-      setCookieRows(await client.listCookies());
-    } catch {
-      return;
-    }
-  }
-
-  async function forgetCookies() {
-    if (!window.confirm("¿Olvidar las cookies de esta sesión?")) return;
-    await client.clearCookies();
-    setCookieRows([]);
-    notify("Cookies olvidadas");
-  }
-
-  function notify(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast((current) => (current === message ? null : current)), 3200);
   }
 }
 
