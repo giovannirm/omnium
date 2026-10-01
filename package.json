@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "demo": "node --experimental-strip-types src/demo/server.ts",
-    "test": "node --experimental-strip-types --test src/core/*.test.ts",
+    "test": "node --experimental-strip-types --test src/core/*.test.ts src/server/*.test.ts",
     "check": "tsc --noEmit",
     "build:electron": "node scripts/build-electron.mjs",
     "build:renderer": "vite build",
