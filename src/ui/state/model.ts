@@ -1,5 +1,5 @@
 import { stepPassed } from "../../core/assertions.ts";
-import { createRequest, uid } from "../../core/factory.ts";
+import { createRequest, pair, uid } from "../../core/factory.ts";
 import type {
   Collection,
   Environment,
@@ -283,6 +283,26 @@ export function updateEnvironmentIn(workspace: Workspace, environment: Environme
     ...workspace,
     environments: workspace.environments.map((item) => (item.id === environment.id ? environment : item)),
   };
+}
+
+/** Aplica lo que los scripts escribieron con `omnium.env.set`: actualiza la
+ * variable existente (conserva id, secreto y si está habilitada) o la agrega. */
+export function applyEnvironmentChanges(
+  workspace: Workspace,
+  environmentId: string,
+  changes: Record<string, string>,
+): Workspace {
+  const environments = workspace.environments.map((environment) => {
+    if (environment.id !== environmentId) return environment;
+    const variables = [...environment.variables];
+    for (const [key, value] of Object.entries(changes)) {
+      const index = variables.findIndex((row) => row.key.trim().toLowerCase() === key.trim().toLowerCase());
+      if (index >= 0) variables[index] = { ...variables[index]!, value };
+      else variables.push(pair(key, value));
+    }
+    return { ...environment, variables };
+  });
+  return { ...workspace, environments };
 }
 
 export function appendCollectionRaw(workspace: Workspace, collection: Collection): Workspace {

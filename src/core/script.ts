@@ -204,3 +204,18 @@ function makeExpect(actual: unknown) {
     },
   };
 }
+
+/** Hooks externos de una corrida: el ambiente abre (pre) y cierra (post),
+ * la colección va por dentro. Es la misma composición que usan CLI y UI. */
+export function externalHooks(
+  collection: { preScript?: string; postScript?: string } | null | undefined,
+  environment: { preScript?: string; postScript?: string } | null | undefined,
+): { pre?: { label: string; code: string }[]; post?: { label: string; code: string }[] } {
+  const pre: { label: string; code: string }[] = [];
+  const post: { label: string; code: string }[] = [];
+  if (environment?.preScript?.trim()) pre.push({ label: "ambiente", code: environment.preScript });
+  if (collection?.preScript?.trim()) pre.push({ label: "colección", code: collection.preScript });
+  if (collection?.postScript?.trim()) post.push({ label: "colección", code: collection.postScript });
+  if (environment?.postScript?.trim()) post.push({ label: "ambiente", code: environment.postScript });
+  return { ...(pre.length ? { pre } : {}), ...(post.length ? { post } : {}) };
+}

@@ -207,6 +207,16 @@ function TestsView({
       ) : (
         <p className="hint">Añade afirmaciones en la pestaña Pruebas y pulsa Probar.</p>
       )}
+      {result?.logs?.length ? (
+        <div className="script-logs">
+          <p className="hint">Salida de los scripts</p>
+          <ul>
+            {result.logs.map((line, index) => (
+              <li key={`${index}-${line}`}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

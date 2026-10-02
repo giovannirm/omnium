@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runScript, type ScriptRequestState, type ScriptResponseState } from "./script.ts";
+import { externalHooks, runScript, type ScriptRequestState, type ScriptResponseState } from "./script.ts";
 
 const base: { variables: Record<string, string>; environment: Record<string, string> } = {
   variables: { baseUrl: "http://x", token: "" },
@@ -140,4 +140,20 @@ test("omnium.require avisa sin loader y funciona con loader", async () => {
   });
   assert.equal(conLoader.ok, true, conLoader.error ?? "");
   assert.deepEqual(conLoader.logs, ['{"nombre":"demo"}']);
+});
+
+test("externalHooks ordena ambiente por fuera y colección por dentro", async () => {
+  const hooks = externalHooks(
+    { preScript: "cPre", postScript: "cPost" },
+    { preScript: "aPre", postScript: "aPost" },
+  );
+  assert.deepEqual(hooks.pre, [
+    { label: "ambiente", code: "aPre" },
+    { label: "colección", code: "cPre" },
+  ]);
+  assert.deepEqual(hooks.post, [
+    { label: "colección", code: "cPost" },
+    { label: "ambiente", code: "aPost" },
+  ]);
+  assert.deepEqual(externalHooks({ preScript: "  " }, null), {});
 });

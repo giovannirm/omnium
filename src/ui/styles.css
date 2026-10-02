@@ -295,3 +295,43 @@ h3 { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--muted); }
 @media (max-width: 1100px) {
   .workspace { overflow: auto; }
 }
+
+/* Editor de scripts: textarea transparente sobre el resaltado. */
+.scripts-panel { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; }
+.script-block { display: flex; flex-direction: column; gap: 6px; }
+.script-label { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.script-label > span:first-child { font-weight: 600; font-size: 13px; }
+.script-box { position: relative; border: 1px solid var(--line); border-radius: 10px; background: #090b09; min-height: 140px; overflow: hidden; }
+.script-code, .script-input {
+  margin: 0;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  tab-size: 2;
+}
+.script-code { position: absolute; inset: 0; overflow: auto; pointer-events: none; color: #e7e7e7; }
+.script-input {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-height: 140px;
+  height: 170px;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: #e7e7e7;
+}
+.script-input::placeholder { color: var(--faint); }
+.tok-com { color: #6f7d6f; font-style: italic; }
+.tok-str { color: #d6f25c; }
+.tok-num { color: #7ddec0; }
+.tok-kw { color: #9eb6ff; }
+.tok-api { color: #f0c14a; }
+.script-logs ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 12px; }
+.script-logs li::before { content: "· "; color: var(--faint); }

@@ -3,8 +3,9 @@ import { EngineRuntime } from "./engine.ts";
 import { loadFromDir } from "./disk.ts";
 import { importPostman } from "./postman.ts";
 import { parseWorkspace } from "./files.ts";
+import { externalHooks } from "./script.ts";
 import { resolveVariables } from "./variables.ts";
-import type { Collection, CollectionReport, Environment, ScriptHook, Workspace } from "./types.ts";
+import type { Collection, CollectionReport, Environment, Workspace } from "./types.ts";
 import { createModuleLoader } from "../host/moduleLoader.ts";
 
 export type CliIo = {
@@ -72,7 +73,7 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
         report: await runtime.run({
           requests: collection.requests,
           variables,
-          ...scriptHooks(collection, environment),
+          ...externalHooks(collection, environment),
           environment: environment?.variables,
           moduleDir: dir,
           requireModule,
@@ -137,17 +138,6 @@ async function loadTarget(target: string): Promise<{ workspace: Workspace; dir: 
       history: [],
     },
   };
-}
-
-/** Hooks externos de una corrida: ambiente primero (pre) y al final (post). */
-function scriptHooks(collection: Collection, environment: Environment | null): { pre?: ScriptHook[]; post?: ScriptHook[] } {
-  const pre: ScriptHook[] = [];
-  const post: ScriptHook[] = [];
-  if (environment?.preScript?.trim()) pre.push({ label: "ambiente", code: environment.preScript });
-  if (collection.preScript?.trim()) pre.push({ label: "colección", code: collection.preScript });
-  if (collection.postScript?.trim()) post.push({ label: "colección", code: collection.postScript });
-  if (environment?.postScript?.trim()) post.push({ label: "ambiente", code: environment.postScript });
-  return { ...(pre.length ? { pre } : {}), ...(post.length ? { post } : {}) };
 }
 
 export function pickEnvironment(workspace: Workspace, asked: string | null): Environment | null {

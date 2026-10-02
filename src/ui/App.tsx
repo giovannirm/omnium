@@ -12,7 +12,7 @@ import { CommandPalette } from "./palette.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { setCollectionVariables, setGlobals, updateCollection } from "./state/model.ts";
 import { useAppState } from "./state/useAppState.ts";
-import { Mark, PairTable } from "./widgets.tsx";
+import { Mark, PairTable, ScriptEditor } from "./widgets.tsx";
 
 export function App() {
   const client = useMemo(() => getClient(), []);
@@ -245,6 +245,14 @@ export function App() {
               hint="Estas variables viven en la colección y pisan a las del ambiente."
               rows={selected.collection.variables}
               onChange={(rows) => setWorkspace(setCollectionVariables(workspace, selected.collection.id, rows))}
+              scripts={{
+                preScript: selected.collection.preScript,
+                postScript: selected.collection.postScript,
+                onScripts: (patch) =>
+                  setWorkspace(
+                    updateCollection(workspace, selected.collection.id, (collection) => ({ ...collection, ...patch })),
+                  ),
+              }}
             />
           ) : (
             <section className="stage empty-stage">
@@ -430,17 +438,39 @@ function VariableStage({
   hint,
   rows,
   onChange,
+  scripts,
 }: {
   title: string;
   hint: string;
   rows: Pair[];
   onChange: (rows: Pair[]) => void;
+  scripts?: {
+    preScript?: string;
+    postScript?: string;
+    onScripts: (patch: { preScript?: string; postScript?: string }) => void;
+  };
 }) {
   return (
     <section className="stage">
       <h2 className="request-title">{title}</h2>
       <p className="hint">{hint}</p>
       <PairTable rows={rows} keyPlaceholder="nombre" valuePlaceholder="valor" onChange={onChange} />
+      {scripts ? (
+        <div className="scripts-panel">
+          <ScriptEditor
+            label="Pre de la colección"
+            hint="Corre antes de cada petición, después del pre del ambiente."
+            value={scripts.preScript ?? ""}
+            onChange={(preScript) => scripts.onScripts({ preScript })}
+          />
+          <ScriptEditor
+            label="Post de la colección"
+            hint="Corre después de cada respuesta, antes del post del ambiente."
+            value={scripts.postScript ?? ""}
+            onChange={(postScript) => scripts.onScripts({ postScript })}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

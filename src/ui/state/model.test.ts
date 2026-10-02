@@ -6,6 +6,7 @@ import {
   appendCollection,
   appendEnvironment,
   appendRequest,
+  applyEnvironmentChanges,
   closeTabAt,
   defaultSelection,
   diffVars,
@@ -141,4 +142,24 @@ test("actualizar una petición aislada no toca a las demás", () => {
 
 test("diffVars solo devuelve lo que cambió", () => {
   assert.deepEqual(diffVars({ a: "1", b: "2" }, { a: "1", b: "3", c: "4" }), { b: "3", c: "4" });
+});
+
+test("applyEnvironmentChanges actualiza, agrega y respeta a los demás ambientes", () => {
+  const workspace = appendEnvironment(base(), "QA").workspace;
+  const environment = workspace.environments[0]!;
+  const original = environment.variables[0]!;
+  const other = workspace.environments[1]!;
+  const next = applyEnvironmentChanges(workspace, environment.id, {
+    [original.key]: "cambiado",
+    nueva: "de un script",
+  });
+  const updated = next.environments.find((item) => item.id === environment.id)!;
+  const row = updated.variables.find((item) => item.id === original.id)!;
+  assert.equal(row.value, "cambiado");
+  assert.equal(row.enabled, original.enabled);
+  assert.equal(row.secret, original.secret);
+  assert.equal(updated.variables.at(-1)!.key, "nueva");
+  assert.equal(updated.variables.at(-1)!.value, "de un script");
+  assert.deepEqual(next.environments.find((item) => item.id === other.id), other);
+  assert.equal(workspace.environments[0]!.variables[0]!.value, original.value);
 });
