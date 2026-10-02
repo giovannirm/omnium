@@ -52,10 +52,17 @@ están implícitos, partir los dos archivos "dios" y eliminar la única arista i
   - [x] `src/core/http.ts`: `readLimitedBody`, `collectHeaders`, `parseJson`, `isBinary`, `decodeText`, `MAX_BODY_BYTES`, `sendPrepared` con `HttpSender` (117 líneas)
   - [x] `src/core/scriptBridge.ts`: `ScriptBinding`, `ScriptState`, `absorb`, `renumberTests`, `scriptEffects`, `toScriptRequest`/`applyScriptRequest`/`mergeHeaders`, `toScriptResponse` (115 líneas)
   - [x] `execute.ts` queda como orquestador (`executeRequest` + `emptyResult` + errores/timing): **278 líneas**
-- [ ] **R3 — Partir `useAppState.ts`** (mismo contrato `AppState` vía facade)
-  - [ ] Leer archivo completo y fijar seam por secciones ya marcadas (workspace/selección/ejecución/carga/chrome)
-  - [ ] Sub-hooks o módulos puros; `useAppState` compone y conserva la forma de `AppState`
-  - [ ] Tests de `model.ts`/estado existentes siguen verdes
+- [x] **R3 — Partir `useAppState.ts`** (facade: mismo contrato `AppState`)
+  - [x] Leer archivo completo y fijar seam por secciones ya marcadas (workspace/selección/ejecución/carga/chrome)
+  - [x] Módulos puros `create*Actions(deps)` llamados dentro del hook (mismas closures por render):
+        `workspaceActions.ts` (231: persistencia, selección/pestañas, entidades, import),
+        `executionActions.ts` (149: send/testCollection/startLoad, `Pane`/`LoadState`/`SessionReport`/`DEFAULT_PLAN`),
+        `chromeActions.ts` (77: paleta de comandos, `startResize`, `Modal`)
+  - [x] `useAppState` queda en **345 líneas** (estado + 6 efectos + derivaciones + composición;
+        re-exporta `Modal`/`Pane`/`LoadState`/`SessionReport`; `AppState = ReturnType` intacto
+        y `App.tsx` sin cambios) — leve desvío del objetivo ~300: los efectos permanecen en
+        el hook por ser material declarativo
+  - [x] Verificado: `npm run check` limpio, `npm test` 77/77, `npm run build` verde
 - [ ] **R4 — Ordenar hosts: CLI y disk salen de `core`**
   - [ ] `src/core/cli.ts` + `src/core/disk.ts` → `src/host/`
   - [ ] Actualizar glob `test` en package.json (`src/host/*.test.ts`) y mover `cli.test.ts`
@@ -77,4 +84,4 @@ están implícitos, partir los dos archivos "dios" y eliminar la única arista i
 
 - [x] Exploración y diagnóstico (evidencia de capas y tamaños)
 - [x] Documento creado (esta rama, antes de la primera escritura de código)
-- [ ] R1 → R4 → cierre
+- [x] R1 ✅ `3898a14` · R2 ✅ `c8e70a0` · R3 ✅ (commit de este slice) → R4 → cierre
