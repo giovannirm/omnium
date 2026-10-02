@@ -126,9 +126,31 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
        `HistoryEntry`), así que no hay filtración ahí. Ruta: inline. ✅ check + 4 tests
        nuevos (`src/core/secrets.test.ts`, 56 totales) + builds verdes.
        Commit `f927a0c`.
-- [ ] **B3** Scripting pre/post request — **bloqueado: requiere que el usuario defina el
-       alcance** antes de arrancar (dónde se escriben los scripts, qué API exponemos,
-       si corre en el motor o aislado).
+- [ ] **B3** Scripting pre/post request — **alcance amplio (elegido por el usuario)**:
+      scripts a nivel petición, colección y ambiente; módulos npm locales; editor con
+      resaltado. Contrato decidido:
+      - Fases `pre`/`post` en `RequestModel`, `Collection` y `Environment`.
+      - Los scripts corren en el host del motor (siempre Node: middleware de Vite,
+        servidor standalone, main de Electron, CLI) con `new Function` envuelto en
+        async — **sin `node:vm`** porque `execute.ts` se empaqueta también en el renderer.
+      - API global `omnium`: `log`, `variables.get/set`, `env.get/set`, `test(name, fn)`,
+        `expect(...)` propio (sin dependencias), `request` (pre), `response` (post),
+        `require(spec)` solo con loader inyectado por el host.
+      - Cada `omnium.test` se vuelve un `AssertionResult` (`id: script:…`) → `stepPassed`
+        y el `Outcome` existente lo muestran sin tocar el motor de aserciones.
+      - `ExecutePayload`/`RunPayload` ganan `pre?: string[]`, `post?: string[]`,
+        `moduleDir?: string`; los cambios de `env.set` vuelven como `environmentChanged`.
+      - Tareas:
+        - [ ] **B3-1** `src/core/script.ts` + tests: `runScript`, API, expect, deadline.
+        - [ ] **B3-2** tipos/persistencia: `preScript`/`postScript` en petición,
+              colección y ambiente (`types`, `factory`, `files.ts` + tests de vuelta).
+        - [ ] **B3-3** motor: hooks en payloads, orquestación en `EngineRuntime` y
+              `runCollection`, `environmentChanged`, tests de integración con la demo.
+        - [ ] **B3-4** UI: `ScriptEditor` con resaltado propio, secciones Pre/Post en
+              petición/colección/ambiente, logs en `Outcome`, aplica `environmentChanged`.
+        - [ ] **B3-5** módulos locales: loader `createRequire` en los hosts y error
+              claro en modo web.
+        - [ ] **B3-6** cierre: check + tests + builds + smoke.
 
 ## Progreso
 
