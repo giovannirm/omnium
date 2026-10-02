@@ -6,28 +6,14 @@ import { parseWorkspace } from "../core/files.ts";
 import { importPostman } from "../core/postman.ts";
 import { toFetch, toPython } from "../core/snippets.ts";
 import { toCurl } from "../core/execute.ts";
-import type { ExecutionResult, LoadPlan, LoadSnapshot, Pair, RequestModel, Workspace } from "../core/types.ts";
-import { resolveVariables } from "../core/variables.ts";
+import type { Pair, RequestModel } from "../core/types.ts";
 import { Editor, EnvironmentEditor } from "./Editor.tsx";
 import { Outcome } from "./Outcome.tsx";
 import { CommandPalette, type Command } from "./palette.tsx";
 import { Sidebar } from "./Sidebar.tsx";
-import {
-  activeEnvironment,
-  appendCollectionRaw,
-  diffVars,
-  failedResult,
-  historyEntry,
-  locate,
-  setCollectionVariables,
-  setGlobals,
-  updateCollection,
-  withHistory,
-} from "./state/model.ts";
+import { appendCollectionRaw, setCollectionVariables, setGlobals, updateCollection } from "./state/model.ts";
 import { useAppState, type Modal } from "./state/useAppState.ts";
 import { Mark, PairTable } from "./widgets.tsx";
-
-type LoadState = { running: boolean; points: number[]; snap: LoadSnapshot | null };
 
 export function App() {
   const client = useMemo(() => getClient(), []);
@@ -38,7 +24,9 @@ export function App() {
     dir,
     saveLabel,
     saveNow,
-    adoptWorkspace,
+    adopt,
+    openArea,
+    createArea,
     exportArea,
     selection,
     tabs,
@@ -54,6 +42,21 @@ export function App() {
     createEnvironment,
     deleteEnvironment,
     updateEnvironment,
+    selected,
+    variables,
+    results,
+    report,
+    runtime,
+    setRuntime,
+    pending,
+    pane,
+    setPane,
+    send,
+    testCollection,
+    load,
+    plan,
+    setPlan,
+    startLoad,
     toast,
     notify,
     cookieRows,
@@ -61,30 +64,14 @@ export function App() {
     forgetCookies,
   } = app;
 
-  const [results, setResults] = useState<Record<string, ExecutionResult>>({});
-  const [report, setReport] = useState<{ collectionId: string; report: Awaited<ReturnType<typeof client.run>> } | null>(null);
-  const [pane, setPane] = useState<"response" | "tests" | "load">("response");
-  const [load, setLoad] = useState<LoadState>({ running: false, points: [], snap: null });
-  const [plan, setPlan] = useState<LoadPlan>({
-    concurrency: 10,
-    rampUpMs: 1000,
-    durationMs: 8000,
-    timeoutMs: 5000,
-    pauseMs: 0,
-    maxErrorPct: 1,
-    maxP95Ms: 500,
-  });
-  const [pending, setPending] = useState(false);
   const [modal, setModal] = useState<Modal>(null);
   const [compact, setCompact] = useState(false);
   const [sideW, setSideW] = useState(286);
   const [outW, setOutW] = useState(430);
   const [curlText, setCurlText] = useState("");
   const [query, setQuery] = useState("");
-  const [runtime, setRuntime] = useState<Record<string, string>>({});
   const importRef = useRef<HTMLInputElement>(null);
   const importKind = useRef<"area" | "postman">("area");
-  const busy = useRef(false);
   const sendRef = useRef<() => void>(() => undefined);
   const modalRef = useRef(modal);
   const commandKey = client.platform === "darwin" ? "⌘" : "Ctrl+";
@@ -95,19 +82,11 @@ export function App() {
   }, [client]);
 
   useEffect(() => {
-    const offTick = client.onLoadTick((snap) => {
-      setLoad((state) => ({ running: !snap.stopped, snap, points: [...state.points, snap.rps].slice(-90) }));
-    });
-    const offDone = client.onLoadDone((snap) => {
-      setLoad((state) => ({ running: false, snap, points: [...state.points, snap.rps].slice(-90) }));
-    });
     const offMenu = client.onMenu((action) => {
       if (action === "new") void createArea();
       if (action === "open") void openArea();
     });
     return () => {
-      offTick();
-      offDone();
       offMenu();
     };
   }, [client]);
@@ -155,14 +134,6 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [client]);
-
-  const selected = useMemo(() => locate(workspace, selection), [workspace, selection]);
-  const environment = activeEnvironment(workspace);
-  const activeCollection = selected && "collection" in selected ? selected.collection : null;
-  const variables = resolveVariables(environment, runtime, {
-    globals: workspace?.globals ?? [],
-    collection: activeCollection?.variables ?? [],
-  });
 
   sendRef.current = () => {
     void send();
@@ -471,85 +442,6 @@ export function App() {
     </div>
   );
 
-  async function send(asTest = false) {
-    if (!workspace || selected?.kind !== "request" || busy.current) return;
-    busy.current = true;
-    setPending(true);
-    setPane(asTest ? "tests" : "response");
-    try {
-      const result = await client.execute({ request: selected.request, variables });
-      setResults((current) => ({ ...current, [selected.request.id]: result }));
-      setRuntime((current) => ({ ...current, ...result.extracted }));
-      remember(selected.request, result);
-      if (result.error) notify(result.error);
-      void refreshCookies();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo enviar";
-      setResults((current) => ({ ...current, [selected.request.id]: failedResult(selected.request, message) }));
-      notify(message);
-    } finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
-
-  async function testCollection(collectionId: string) {
-    if (!workspace || busy.current) return;
-    const collection = workspace.collections.find((item) => item.id === collectionId);
-    if (!collection) return;
-    busy.current = true;
-    setPending(true);
-    setPane("tests");
-    try {
-      const runVars = resolveVariables(
-        workspace.environments.find((item) => item.id === workspace.activeEnvironmentId) ?? null,
-        runtime,
-        { globals: workspace.globals, collection: collection.variables },
-      );
-      const next = await client.run({ requests: collection.requests, variables: runVars });
-      const fresh: Record<string, ExecutionResult> = {};
-      for (const step of next.steps) fresh[step.requestId] = step.result;
-      setResults((current) => ({ ...current, ...fresh }));
-      setReport({ collectionId, report: next });
-      setRuntime((current) => ({ ...current, ...diffVars(runVars, next.variables) }));
-      const cancelled = next.steps.some((step) => step.result.error === "Petición cancelada");
-      notify(cancelled ? "Prueba cancelada" : next.failed ? `${next.failed} peticiones fallaron` : `${next.passed} peticiones bien`);
-      void refreshCookies();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudo probar la colección");
-    } finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
-
-  async function startLoad() {
-    if (selected?.kind !== "request" || load.running || busy.current) return;
-    setPane("load");
-    setLoad({ running: true, points: [], snap: null });
-    try {
-      const snap = await client.startLoad({ request: selected.request, variables, plan });
-      setLoad((state) => ({ running: false, snap, points: state.points }));
-    } catch (error) {
-      setLoad((state) => ({ ...state, running: false }));
-      notify(error instanceof Error ? error.message : "La carga no arrancó");
-    }
-  }
-
-  function remember(request: RequestModel, result: ExecutionResult) {
-    setWorkspace((current) => (current ? withHistory(current, historyEntry(request, result)) : current));
-  }
-
-  async function openArea() {
-    const opened = await app.openArea();
-    if (opened) adopt(opened.workspace, opened.dir);
-  }
-
-  async function createArea() {
-    const created = await app.createArea();
-    if (created) adopt(created.workspace, created.dir);
-  }
-
   async function importArea(file: File) {
     try {
       const raw = JSON.parse(await file.text()) as unknown;
@@ -621,13 +513,6 @@ export function App() {
       }
     }
     return items;
-  }
-
-  function adopt(next: Workspace, nextDir: string | null, persist = false) {
-    adoptWorkspace(next, nextDir, persist);
-    setResults({});
-    setReport(null);
-    setRuntime({});
   }
 }
 
