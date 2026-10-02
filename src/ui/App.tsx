@@ -1,18 +1,16 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { getClient } from "../client.ts";
 import type { CookieView } from "../core/cookies.ts";
 import { parseCurl } from "../core/curl.ts";
-import { parseWorkspace } from "../core/files.ts";
-import { importPostman } from "../core/postman.ts";
-import { toFetch, toPython } from "../core/snippets.ts";
 import { toCurl } from "../core/execute.ts";
+import { toFetch, toPython } from "../core/snippets.ts";
 import type { Pair, RequestModel } from "../core/types.ts";
 import { Editor, EnvironmentEditor } from "./Editor.tsx";
 import { Outcome } from "./Outcome.tsx";
-import { CommandPalette, type Command } from "./palette.tsx";
+import { CommandPalette } from "./palette.tsx";
 import { Sidebar } from "./Sidebar.tsx";
-import { appendCollectionRaw, setCollectionVariables, setGlobals, updateCollection } from "./state/model.ts";
-import { useAppState, type Modal } from "./state/useAppState.ts";
+import { setCollectionVariables, setGlobals, updateCollection } from "./state/model.ts";
+import { useAppState } from "./state/useAppState.ts";
 import { Mark, PairTable } from "./widgets.tsx";
 
 export function App() {
@@ -23,8 +21,6 @@ export function App() {
     setWorkspace,
     dir,
     saveLabel,
-    saveNow,
-    adopt,
     openArea,
     createArea,
     exportArea,
@@ -62,83 +58,22 @@ export function App() {
     cookieRows,
     refreshCookies,
     forgetCookies,
+    modal,
+    setModal,
+    compact,
+    sideW,
+    outW,
+    curlText,
+    setCurlText,
+    query,
+    setQuery,
+    importRef,
+    commandKey,
+    importArea,
+    beginImport,
+    startResize,
+    commands,
   } = app;
-
-  const [modal, setModal] = useState<Modal>(null);
-  const [compact, setCompact] = useState(false);
-  const [sideW, setSideW] = useState(286);
-  const [outW, setOutW] = useState(430);
-  const [curlText, setCurlText] = useState("");
-  const [query, setQuery] = useState("");
-  const importRef = useRef<HTMLInputElement>(null);
-  const importKind = useRef<"area" | "postman">("area");
-  const sendRef = useRef<() => void>(() => undefined);
-  const modalRef = useRef(modal);
-  const commandKey = client.platform === "darwin" ? "⌘" : "Ctrl+";
-
-  useEffect(() => {
-    document.body.classList.toggle("is-desktop", client.desktop);
-    document.body.dataset.platform = client.platform;
-  }, [client]);
-
-  useEffect(() => {
-    const offMenu = client.onMenu((action) => {
-      if (action === "new") void createArea();
-      if (action === "open") void openArea();
-    });
-    return () => {
-      offMenu();
-    };
-  }, [client]);
-
-  useEffect(() => {
-    const fit = () => {
-      const narrow = window.innerWidth < 980;
-      setCompact(narrow);
-      if (narrow) return;
-      const room = window.innerWidth - 24;
-      const side = Math.min(280, Math.max(220, Math.round(room * 0.22)));
-      const out = Math.min(460, Math.max(300, room - side - 460));
-      setSideW(side);
-      setOutW(out);
-    };
-    fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const meta = event.metaKey || event.ctrlKey;
-      if (event.key === "Escape" && modalRef.current) {
-        event.preventDefault();
-        setModal(null);
-        return;
-      }
-      if (!meta) return;
-      if (event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setModal((current) => (current === "palette" ? null : "palette"));
-        return;
-      }
-      if (event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        saveNow();
-        return;
-      }
-      if (event.key === "Enter" && !modalRef.current) {
-        event.preventDefault();
-        sendRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [client]);
-
-  sendRef.current = () => {
-    void send();
-  };
-  modalRef.current = modal;
 
   if (!workspace) {
     return (
@@ -442,78 +377,6 @@ export function App() {
     </div>
   );
 
-  async function importArea(file: File) {
-    try {
-      const raw = JSON.parse(await file.text()) as unknown;
-      if (importKind.current === "postman") {
-        const collection = importPostman(raw);
-        setWorkspace((current) => (current ? appendCollectionRaw(current, collection) : current));
-        const request = collection.requests[0];
-        if (request) choose({ kind: "request", collectionId: collection.id, requestId: request.id });
-        notify(`Importada la colección ${collection.name}`);
-        return;
-      }
-      const parsed = parseWorkspace(raw);
-      if (!window.confirm("Esto reemplaza colecciones, ambientes e historial de esta área.")) return;
-      adopt(parsed, dir, true);
-      notify("Área importada");
-    } catch (error) {
-      notify(error instanceof SyntaxError ? "El archivo no es JSON" : error instanceof Error ? error.message : "No se pudo importar");
-    }
-  }
-
-  function beginImport(kind: "area" | "postman") {
-    importKind.current = kind;
-    importRef.current?.click();
-  }
-
-  function startResize(which: "side" | "out", origin: number, width: number) {
-    const move = (event: MouseEvent) => {
-      const delta = event.clientX - origin;
-      const room = window.innerWidth - 520;
-      if (which === "side") setSideW(Math.min(480, Math.max(220, Math.min(width + delta, room - outW))));
-      else setOutW(Math.min(680, Math.max(300, Math.min(width - delta, room - sideW))));
-    };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      window.removeEventListener("blur", up);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-    window.addEventListener("blur", up);
-  }
-
-  function commands(): Command[] {
-    if (!workspace) return [];
-    const items: Command[] = [
-      { id: "send", label: "Enviar petición", hint: `${commandKey}↩`, run: () => void send() },
-      { id: "test", label: "Probar afirmaciones", hint: "Petición actual", run: () => void send(true) },
-      { id: "load", label: "Abrir carga", hint: "Usuarios y percentiles", run: () => setPane("load") },
-      { id: "code", label: "Generar código", hint: "fetch y Python", run: () => setModal("snippet") },
-      { id: "postman", label: "Importar colección Postman", hint: "v2.1", run: () => beginImport("postman") },
-      { id: "globals", label: "Variables globales", hint: "Toda el área", run: () => choose({ kind: "globals" }) },
-      { id: "cookies", label: "Ver cookies", hint: "Sesión local", run: () => { setModal("cookies"); void refreshCookies(); } },
-      { id: "help", label: "Ayuda", hint: "Atajos y ejemplo", run: () => setModal("help") },
-    ];
-    for (const collection of workspace.collections) {
-      items.push({
-        id: `vars-${collection.id}`,
-        label: `Variables de ${collection.name}`,
-        hint: "Colección",
-        run: () => choose({ kind: "collection", collectionId: collection.id }),
-      });
-      for (const request of collection.requests) {
-        items.push({
-          id: request.id,
-          label: request.name,
-          hint: `${collection.name} · ${request.method}`,
-          run: () => choose({ kind: "request", collectionId: collection.id, requestId: request.id }),
-        });
-      }
-    }
-    return items;
-  }
 }
 
 function CookiesDialog({ rows, onClose, onClear }: { rows: CookieView[]; onClose: () => void; onClear: () => void }) {
