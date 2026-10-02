@@ -61,6 +61,7 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 | PR 9 | `0e42990` refactor(ui): chrome de la interfaz en la capa de estado | 346 |
 | PR 10 | `b5b2593` test(server): standalone end to end | 84 |
 | PR 11 | `487b2c6` feat(cli): run headless con informe | 364 |
+| PR 12 | `f927a0c` feat(secrets): marca secret + masking en exportación | 144 |
 | docs | `0fd0d9e`, `a6fb563`, `be6b4bd` + este commit: plan/avance | — |
 
 ## Criterios de aceptación
@@ -117,9 +118,17 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
        `parseWorkspace`. Ruta: inline. ✅ check + 8 tests nuevos en
        `src/core/cli.test.ts` (52 totales) + build verdes. Commit `487b2c6`.
 
-- [ ] **B1** CLI/headless: `omnium run <workspace|colección>` con informe y exit code.
-- [ ] **B2** Secretos en entornos: marca `secret` en `Pair`, masking en UI/export/history.
-- [ ] **B3** Scripting pre/post request (alcance a definir con el usuario antes de arrancar).
+- [x] **B2** Secretos en entornos: `Pair.secret` (marca explícita + toggle en `PairTable`,
+       campo enmascarado), `src/core/secrets.ts` (`maskWorkspace`, `maskPairs`,
+       `hasSecrets`, `secretKeys`); el área en disco conserva los valores reales y
+       **la exportación JSON los enmascara**; los snippets avisan cuando el código
+       embebe un secreto. El historial no guarda valores de variables (verificado en
+       `HistoryEntry`), así que no hay filtración ahí. Ruta: inline. ✅ check + 4 tests
+       nuevos (`src/core/secrets.test.ts`, 56 totales) + builds verdes.
+       Commit `f927a0c`.
+- [ ] **B3** Scripting pre/post request — **bloqueado: requiere que el usuario defina el
+       alcance** antes de arrancar (dónde se escriben los scripts, qué API exponemos,
+       si corre en el motor o aislado).
 
 ## Progreso
 
@@ -136,4 +145,9 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 - **Fase A cerrada**. Pendiente único: smoke visual de la UI en navegador.
 - 2026-10-02: **B1 completo** (`487b2c6`): CLI headless `npm run omnium -- run …`,
   8 tests nuevos → 52 en verde; smoke de `help` y código de salida 2 verificado.
-- Próximo paso: **B2** secretos en entornos. Después **B3** (definir alcance con el usuario).
+- 2026-10-02: **B2 completo** (`f927a0c`): 4 tests nuevos → 56 en verde. El historial
+  no almacena valores (comprobado en `HistoryEntry`), por eso el masking se aplica a
+  la exportación y a la UI, no a `history.json`.
+- **Bloqueado**: B3 necesita definición de alcance con el usuario. Pendientes
+  también: smoke visual de la UI en navegador, espejo Engram, y la entrega en PR
+  (rama `feat/engine-runtime`, 12 commits sin push; push/PR son decisión del usuario).
