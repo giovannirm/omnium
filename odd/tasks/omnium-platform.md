@@ -62,6 +62,9 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 | PR 10 | `b5b2593` test(server): standalone end to end | 84 |
 | PR 11 | `487b2c6` feat(cli): run headless con informe | 364 |
 | PR 12 | `f927a0c` feat(secrets): marca secret + masking en exportación | 144 |
+| PR 13 | `f09fba9` feat(script): runner de scripts pre/post | 349 |
+| PR 14 | `2077375` feat(model): pre/post en petición, colección y ambiente | 58 |
+| PR 15 | `3204a30` feat(engine): orquestación de scripts + loader de módulos | 455 — **size:exception** (unidad coherente: motor + runner + hosts; cortarla dejaría el motor a medio cablear) |
 | docs | `0fd0d9e`, `a6fb563`, `be6b4bd` + este commit: plan/avance | — |
 
 ## Criterios de aceptación
@@ -138,14 +141,26 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
         `require(spec)` solo con loader inyectado por el host.
       - Cada `omnium.test` se vuelve un `AssertionResult` (`id: script:…`) → `stepPassed`
         y el `Outcome` existente lo muestran sin tocar el motor de aserciones.
-      - `ExecutePayload`/`RunPayload` ganan `pre?: string[]`, `post?: string[]`,
-        `moduleDir?: string`; los cambios de `env.set` vuelven como `environmentChanged`.
+      - `ExecutePayload`/`RunPayload` ganan `pre?: ScriptHook[]` (`{label, code}`),
+        `post?: ScriptHook[]`, `environment?: Pair[]`, `moduleDir?: string|null` y
+        `requireModule` (lo adjunta el host en proceso; JSON lo descarta); los cambios
+        de `env.set` vuelven como `environmentChanged`.
       - Tareas:
-        - [ ] **B3-1** `src/core/script.ts` + tests: `runScript`, API, expect, deadline.
-        - [ ] **B3-2** tipos/persistencia: `preScript`/`postScript` en petición,
-              colección y ambiente (`types`, `factory`, `files.ts` + tests de vuelta).
-        - [ ] **B3-3** motor: hooks en payloads, orquestación en `EngineRuntime` y
-              `runCollection`, `environmentChanged`, tests de integración con la demo.
+        - [x] **B3-1** `src/core/script.ts` + tests: `runScript`, API, expect, deadline.
+               Orden de `tests` = orden de llamada (reserva de slot + `Promise.all`).
+               Ruta: inline. ✅ 10 tests nuevos. Commit `f09fba9`.
+        - [x] **B3-2** tipos/persistencia: `preScript`/`postScript` en petición,
+               colección y ambiente (`types`, `factory`, `files.ts` + tests de vuelta;
+               ojo: `filesToWorkspace` arma colecciones en línea, no usa `asCollection`).
+               Ruta: inline. ✅ 2 tests nuevos → 68. Commit `2077375`.
+        - [x] **B3-3** motor: hooks en payloads, orquestación en `executeRequest`
+               (pre: ambiente → colección → petición; post: petición → colección →
+               ambiente; un pre que falla aborta antes de la red, un post que falla
+               queda como aserción fallida), `environmentChanged` en resultado e
+               informe, merge de `extracted` sin gate de `ok`, loader de módulos en
+               router/Electron/CLI, CLI compone hooks + imprime logs. Ruta: inline.
+               ✅ 4 tests de integración → 72 + builds. Commit `3204a30` (455 líneas,
+               size:exception: unidad motor+hosts).
         - [ ] **B3-4** UI: `ScriptEditor` con resaltado propio, secciones Pre/Post en
               petición/colección/ambiente, logs en `Outcome`, aplica `environmentChanged`.
         - [ ] **B3-5** módulos locales: loader `createRequire` en los hosts y error
@@ -170,6 +185,13 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 - 2026-10-02: **B2 completo** (`f927a0c`): 4 tests nuevos → 56 en verde. El historial
   no almacena valores (comprobado en `HistoryEntry`), por eso el masking se aplica a
   la exportación y a la UI, no a `history.json`.
-- **Bloqueado**: B3 necesita definición de alcance con el usuario. Pendientes
-  también: smoke visual de la UI en navegador, espejo Engram, y la entrega en PR
-  (rama `feat/engine-runtime`, 12 commits sin push; push/PR son decisión del usuario).
+- 2026-10-02: **B3 en marcha — alcance "Amplio" elegido por el usuario**.
+  B3-1 (`f09fba9`), B3-2 (`2077375`), B3-3 (`3204a30`) completos: scripts
+  pre/post persisten, se orquestan en el motor (ambiente → colección → petición
+  en pre; inverso en post), los tests de scripts entran como `script:n` en las
+  aserciones, `omnium.env.*` reporta `environmentChanged` y los hosts con Node
+  adjuntan el loader de `omnium.require`. 72 tests en verde, builds verdes.
+  Siguiente: B3-4 (editor UI + logs en Outcome + aplicar cambios de ambiente).
+- **Bloqueados**: pendientes — smoke visual de la UI en navegador, espejo Engram
+  (`mem_save` falla en esta sesión), y la entrega en PR (rama `feat/engine-runtime`,
+  21 commits sin push; push/PR son decisión del usuario).
