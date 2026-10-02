@@ -6,8 +6,8 @@ import { after, before, test } from "node:test";
 import { startDemo } from "../demo/server.ts";
 import { runCli, USAGE } from "./cli.ts";
 import { saveToDir } from "./disk.ts";
-import { sampleWorkspace } from "./sample.ts";
-import type { Workspace } from "./types.ts";
+import { sampleWorkspace } from "../core/sample.ts";
+import type { Workspace } from "../core/types.ts";
 
 let demo: { port: number; close: () => Promise<void> };
 let root = "";

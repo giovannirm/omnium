@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell } from "elect
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { EngineRuntime } from "../src/core/engine.ts";
-import { ensureWorkspace, saveToDir } from "../src/core/disk.ts";
+import { ensureWorkspace, saveToDir } from "../src/host/disk.ts";
 import { parseWorkspace } from "../src/core/files.ts";
 import { sampleWorkspace } from "../src/core/sample.ts";
 import type { ExecutePayload, LoadPayload, RunPayload, Workspace } from "../src/core/types.ts";

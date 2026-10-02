@@ -1,8 +1,8 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { filesToWorkspace, workspaceToFiles } from "./files.ts";
-import { sampleWorkspace } from "./sample.ts";
-import type { Workspace } from "./types.ts";
+import { filesToWorkspace, workspaceToFiles } from "../core/files.ts";
+import { sampleWorkspace } from "../core/sample.ts";
+import type { Workspace } from "../core/types.ts";
 
 const MANAGED = /^(omnium\.json|history\.json|environments\/.+|collections\/.+)$/;
 
