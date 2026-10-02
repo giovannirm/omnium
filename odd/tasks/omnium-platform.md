@@ -65,6 +65,7 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 | PR 13 | `f09fba9` feat(script): runner de scripts pre/post | 349 |
 | PR 14 | `2077375` feat(model): pre/post en petición, colección y ambiente | 58 |
 | PR 15 | `3204a30` feat(engine): orquestación de scripts + loader de módulos | 455 — **size:exception** (unidad coherente: motor + runner + hosts; cortarla dejaría el motor a medio cablear) |
+| PR 16 | `15bae2c` feat(ui): editor de scripts, logs y cambios de ambiente | 307 |
 | docs | `0fd0d9e`, `a6fb563`, `be6b4bd` + este commit: plan/avance | — |
 
 ## Criterios de aceptación
@@ -129,7 +130,7 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
        `HistoryEntry`), así que no hay filtración ahí. Ruta: inline. ✅ check + 4 tests
        nuevos (`src/core/secrets.test.ts`, 56 totales) + builds verdes.
        Commit `f927a0c`.
-- [ ] **B3** Scripting pre/post request — **alcance amplio (elegido por el usuario)**:
+- [x] **B3** Scripting pre/post request — **alcance amplio (elegido por el usuario)**:
       scripts a nivel petición, colección y ambiente; módulos npm locales; editor con
       resaltado. Contrato decidido:
       - Fases `pre`/`post` en `RequestModel`, `Collection` y `Environment`.
@@ -161,11 +162,24 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
                router/Electron/CLI, CLI compone hooks + imprime logs. Ruta: inline.
                ✅ 4 tests de integración → 72 + builds. Commit `3204a30` (455 líneas,
                size:exception: unidad motor+hosts).
-        - [ ] **B3-4** UI: `ScriptEditor` con resaltado propio, secciones Pre/Post en
-              petición/colección/ambiente, logs en `Outcome`, aplica `environmentChanged`.
-        - [ ] **B3-5** módulos locales: loader `createRequire` en los hosts y error
-              claro en modo web.
-        - [ ] **B3-6** cierre: check + tests + builds + smoke.
+        - [x] **B3-4** UI: `ScriptEditor` (textarea transparente sobre `pre`
+               tokenizado — comentarios/cadenas/números/palabras clave/`omnium`,
+               sin dependencias) en pestaña Scripts de la petición, en el editor
+               de ambiente y en la etapa de colección; logs de scripts en el
+               panel Pruebas; `applyEnvironmentChanges` en `model.ts` + los
+               payloads de `send`/`testCollection` llevan hooks, ambiente y
+               `moduleDir`. Ruta: inline. ✅ 2 tests nuevos → 74 + builds.
+               Commit `15bae2c`.
+        - [x] **B3-5** módulos locales: `src/host/moduleLoader.ts` (createRequire
+               desde el dir del área) enganchado en router (usa `moduleDir` del
+               payload), Electron (`currentDir` de respaldo) y CLI; sin loader el
+               error ya vive en `script.ts`. Verificado con smoke real: módulo
+               local cargado desde la CLI y mensaje claro sin loader.
+        - [x] **B3-6** cierre: ✅ `check` limpio, **74/74 tests**, builds de
+               renderer y Electron verdes; smokes: CLI end-to-end (hooks, logs,
+               `ultimo=token-ada` propagado por la corrida, `omnium.require`),
+               y por HTTP (`POST /__omnium/execute` con pre/post → `script:1`
+               pasó, `environmentChanged: {via: "http"}`).
 
 ## Progreso
 
@@ -192,6 +206,14 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
   aserciones, `omnium.env.*` reporta `environmentChanged` y los hosts con Node
   adjuntan el loader de `omnium.require`. 72 tests en verde, builds verdes.
   Siguiente: B3-4 (editor UI + logs en Outcome + aplicar cambios de ambiente).
-- **Bloqueados**: pendientes — smoke visual de la UI en navegador, espejo Engram
-  (`mem_save` falla en esta sesión), y la entrega en PR (rama `feat/engine-runtime`,
-  21 commits sin push; push/PR son decisión del usuario).
+- 2026-10-02: **B3 completo — Fase B completa** (alcance "Amplio").
+  B3-1 `f09fba9`, B3-2 `2077375`, B3-3 `3204a30`, B3-4 `15bae2c`, B3-5/B3-6
+  verificados en el cierre: 74 tests verdes, builds verdes, smokes de CLI
+  (hooks + `omnium.require` con módulo local + `environmentChanged` propagado)
+  y de HTTP (`/__omnium/execute` con scripts). Orden de hooks: ambiente →
+  colección → petición en pre; inverso en post. Un pre que falla aborta antes
+  de la red; un post que falla queda como aserción fallida (`script:n`).
+- **Pendientes**: smoke visual de la UI en navegador (editor de scripts sin
+  revisar en vivo), espejo Engram del plan (`mem_save` falla en esta sesión),
+  y la entrega en PR (rama `feat/engine-runtime`, 24 commits sin push;
+  push/PR son decisión del usuario).
