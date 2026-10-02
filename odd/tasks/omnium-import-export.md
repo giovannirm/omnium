@@ -102,10 +102,23 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
         en bloque, roundtrip import→export→import, dispatcher) + 2 de detección
   - [x] Bugs propios atrapados: export omitía peticiones de raíz; `vars()` dejaba espacio
         sobrante en `{{base_url }}`; orden carpetas/raíz en el roundtrip
-- [ ] **T4 — Bruno (`.bru`)**
-  - [ ] Parser `bruno.ts`: `meta/params/headers/auth/body/http/script/assert` (+ `folder`)
-  - [ ] Export: colección → archivos `.bru` (request por archivo; ver límite en Progreso)
-  - [ ] Tests: request con auth bearer + assertions
+- [x] **T4 — Bruno (`.bru`)** ✅
+  - [x] Parser `bruno.ts` (438): bloques `etiqueta { … }` con cierre en columna 0;
+        `meta` (ignora `tags`), método/`http` (método custom → aviso + GET),
+        `params:query`/`params:path` (`~` deshabilitado, `:clave` sustituida en URL),
+        `headers`, `auth:*` (bearer/basic/apikey; oauth2/inherit → aviso),
+        `body:*` (json/text/xml → crudo dedent; form-urlencoded/multipart → pares;
+        graphql → texto + aviso), `script:pre-request`/`post-response`, `assert`
+        → aserciones nativas (`$res.status`, `$res.body.x`, `$res.headers.x`, ops
+        eq/notEq/contains/isDefined/gt…), `docs` → descripción, `settings.
+        followRedirects`; `tests`/`vars:*` → aviso (API bru.*); `folder.bru` → error claro
+  - [x] Export: `exportBru(request)` → un `.bru` por petición (meta, método,
+        params/headers con `~`, auth, body, scripts, assert, settings, docs)
+  - [x] Tests: fixture completo (bearer + 3 asserts + scripts + ~disabled),
+        roundtrip, avisos oauth2/tests, folder error, params:path + método custom
+  - [x] **Límite documentado (Progreso)**: la exportación Bruno es un archivo por
+        petición y NO recrea carpetas/`bruno.json` (Bruno no importa `.bru` sueltos;
+        el usuario los coloca en su colección existente)
 - [ ] **T5 — JMeter (`.jmx`)**
   - [ ] Parser dirigido de XML (tags conocidos, sin dependencia): ThreadGroup → colección,
         HTTPSamplerProxy → petición (método/dominio/puerto/ruta/query), headers, body,
@@ -144,7 +157,12 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 
 ## Progreso
 
+- **Límite de exportación Bruno** (definido en T4): un `.bru` por petición
+  (descarga por archivo); no se recrean carpetas ni `bruno.json` — Bruno no
+  importa `.bru` sueltos, el usuario los coloca en su colección existente.
+
 - [x] Exploración (postman.ts, script.ts, tipos, UI/CLI actuales) y decisión de alcance
 - [x] Documento creado (antes de la primera escritura de código)
 - [x] T1+T2 ✅ (99/99 tests, tsc + build verdes) → T3 → T9
 - [x] T3 ✅ (115/115 tests, tsc + build verdes) → T4
+- [x] T4 ✅ (120/120 tests, tsc + build verdes) → T5

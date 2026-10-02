@@ -75,7 +75,14 @@ test("importCollection rechaza un área como colección, con error claro", () =>
 });
 
 test("importCollection rechaza formatos no soportados nombrando el formato", () => {
-  assert.throws(() => importCollection("meta {\n}\nhttp {\n}\n", "x.bru"), /Bruno/);
+  const hoppscotch = JSON.stringify({ v: 2, items: [{ name: "Ping", method: "GET", url: "https://api.test" }] });
+  assert.throws(() => importCollection(hoppscotch, "x.json"), /Hoppscotch/);
+  const jmeter = '<jmeterTestPlan version="1.2"></jmeterTestPlan>';
+  assert.throws(() => importCollection(jmeter, "x.jmx"), /JMeter/);
+});
+
+test("importCollection explica un .bru sin petición", () => {
+  assert.throws(() => importCollection("meta {\n  name: Vacío\n}\n", "x.bru"), /método HTTP/);
 });
 
 test("importCollection explica un Insomnia v4 vacío (sin workspace)", () => {

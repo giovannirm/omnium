@@ -1,3 +1,4 @@
+import { importBru } from "./bruno.ts";
 import { importInsomnia } from "./insomnia.ts";
 import { importPostman } from "./postman.ts";
 import type { Collection } from "./types.ts";
@@ -54,6 +55,7 @@ export function importCollection(text: string, fileName?: string): ImportResult 
     return importPostman(json);
   }
   if (format === "insomnia") return importInsomnia(text);
+  if (format === "bruno") return importBru(text);
   throw new Error(`El formato ${FORMATS[format].label} todavía no está soportado en esta versión`);
 }
 
