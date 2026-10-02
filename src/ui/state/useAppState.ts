@@ -10,6 +10,7 @@ import type {
   Workspace,
 } from "../../core/types.ts";
 import { resolveVariables } from "../../core/variables.ts";
+import { hasSecrets, maskWorkspace } from "../../core/secrets.ts";
 import type { Command } from "../palette.tsx";
 import {
   activeEnvironment,
@@ -230,8 +231,9 @@ export function useAppState(options: { client: Client }) {
 
   async function exportArea(): Promise<void> {
     if (!workspace) return;
-    const done = await client.exportFile(workspace);
-    if (done) notify("Área exportada");
+    const secrets = hasSecrets(workspace);
+    const done = await client.exportFile(maskWorkspace(workspace));
+    if (done) notify(secrets ? "Área exportada · secretos enmascarados" : "Área exportada");
   }
 
   // --- selección y pestañas ---

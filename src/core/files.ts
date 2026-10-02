@@ -187,6 +187,7 @@ function asPairs(raw: unknown): Pair[] {
       key: text(record.key, ""),
       value: text(record.value, ""),
       enabled: record.enabled !== false,
+      ...(record.secret === true ? { secret: true } : {}),
     };
   });
 }

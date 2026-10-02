@@ -7,6 +7,8 @@ export type Pair = {
   key: string;
   value: string;
   enabled: boolean;
+  /** El valor se muestra oculto y se exporta enmascarado. */
+  secret?: boolean;
 };
 
 export type Auth =

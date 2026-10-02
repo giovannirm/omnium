@@ -4,6 +4,7 @@ import type { CookieView } from "../core/cookies.ts";
 import { parseCurl } from "../core/curl.ts";
 import { toCurl } from "../core/execute.ts";
 import { toFetch, toPython } from "../core/snippets.ts";
+import { secretKeys } from "../core/secrets.ts";
 import type { Pair, RequestModel } from "../core/types.ts";
 import { Editor, EnvironmentEditor } from "./Editor.tsx";
 import { Outcome } from "./Outcome.tsx";
@@ -328,6 +329,7 @@ export function App() {
         <SnippetModal
           request={selected.request}
           variables={variables}
+          secretNames={secretKeys(workspace)}
           onClose={() => setModal(null)}
           onCopy={(text) =>
             void navigator.clipboard.writeText(text).then(
@@ -446,16 +448,22 @@ function VariableStage({
 function SnippetModal({
   request,
   variables,
+  secretNames,
   onClose,
   onCopy,
 }: {
   request: RequestModel;
   variables: Record<string, string>;
+  secretNames: string[];
   onClose: () => void;
   onCopy: (text: string) => void;
 }) {
   const [kind, setKind] = useState<"fetch" | "python" | "curl">("fetch");
   const code = kind === "fetch" ? toFetch(request, variables) : kind === "python" ? toPython(request, variables) : toCurl(request, variables);
+  const leaksSecret = secretNames.some((key) => {
+    const value = variables[key];
+    return Boolean(value) && code.includes(value as string);
+  });
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal wide" role="dialog" aria-modal="true" aria-labelledby="snippet-title" onClick={(event) => event.stopPropagation()}>
@@ -472,6 +480,9 @@ function SnippetModal({
           </button>
         </div>
         <pre className="code">{code}</pre>
+        {leaksSecret ? (
+          <p className="banner">Este código usa valores marcados como secretos. No lo compartas tal cual.</p>
+        ) : null}
         <div className="toolbar">
           <button type="button" className="send" onClick={() => onCopy(code)}>
             Copiar

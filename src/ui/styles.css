@@ -156,7 +156,7 @@ body.is-desktop[data-platform="darwin"] .topbar { padding-left: 88px; -webkit-ap
 .spacer { flex: 1; }
 .panel { padding-bottom: 24px; }
 .pairs { display: flex; flex-direction: column; gap: 6px; }
-.pair, .assert-row { display: grid; grid-template-columns: 28px 1fr 1fr 28px; gap: 6px; align-items: center; }
+.pair, .assert-row { display: grid; grid-template-columns: 28px 1fr 1fr 28px 28px; gap: 6px; align-items: center; }
 .assert-row { grid-template-columns: 1fr 0.8fr 1fr 1fr 28px; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .chip { font-family: var(--mono); font-size: 12px; padding: 3px 8px; border-radius: 99px; background: rgba(125, 222, 192, 0.12); color: var(--teal); }

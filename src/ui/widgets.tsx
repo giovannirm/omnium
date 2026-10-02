@@ -43,8 +43,15 @@ export function PairTable({
             value={row.value}
             placeholder={valuePlaceholder}
             spellCheck={false}
-            type={secret(row.key) ? "password" : "text"}
+            type={row.secret || looksSecret(row.key) ? "password" : "text"}
             onChange={(event) => update(row.id, { value: event.target.value })}
+          />
+          <input
+            type="checkbox"
+            checked={row.secret === true}
+            aria-label="Valor secreto"
+            title="Oculta el valor en pantalla y lo exporta enmascarado"
+            onChange={(event) => update(row.id, { secret: event.target.checked })}
           />
           <button type="button" className="icon" aria-label="Quitar" onClick={() => onChange(rows.filter((item) => item.id !== row.id))}>
             ×
@@ -147,7 +154,8 @@ export function formatMs(value: number): string {
   return `${Math.round(value)} ms`;
 }
 
-function secret(key: string): boolean {
+/** Sugerencia: algunos nombres ya delatan una clave sin marcar a mano. */
+function looksSecret(key: string): boolean {
   return /pass|token|secret|authorization/i.test(key);
 }
 
