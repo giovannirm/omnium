@@ -59,6 +59,22 @@ export function resolveVariables(
   return out;
 }
 
+/** Copia habilitada de los pares; es la capa que ven los scripts (`omnium.env.*`). */
+export function pairsToRecord(pairs: Pair[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  writePairs(out, pairs);
+  return out;
+}
+
+/** Claves cuyo valor cambió respecto de `before` (altas incluidas). */
+export function diffRecords(before: Record<string, string>, after: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(after)) {
+    if (before[key] !== value) out[key] = value;
+  }
+  return out;
+}
+
 function writePairs(out: Record<string, string>, pairs: Pair[]) {
   for (const pair of pairs) {
     const key = pair.key.trim();

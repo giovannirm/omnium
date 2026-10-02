@@ -6,6 +6,7 @@ import { ensureWorkspace, saveToDir } from "../src/core/disk.ts";
 import { parseWorkspace } from "../src/core/files.ts";
 import { sampleWorkspace } from "../src/core/sample.ts";
 import type { ExecutePayload, LoadPayload, RunPayload, Workspace } from "../src/core/types.ts";
+import { createModuleLoader } from "../src/host/moduleLoader.ts";
 
 declare const __dirname: string;
 
@@ -190,9 +191,16 @@ ipcMain.handle("workspace:export", async (_event, raw: unknown) => {
   return true;
 });
 
-ipcMain.handle("http:execute", async (_event, payload: ExecutePayload) => runtime.execute(payload));
+/** El IPC clona sin funciones: el host adjunta `omnium.require` con el
+ * directorio del payload o con el del área abierta. */
+function withModules<T extends ExecutePayload | RunPayload>(payload: T): T {
+  if (!payload || payload.requireModule) return payload;
+  return { ...payload, requireModule: createModuleLoader(payload.moduleDir ?? currentDir) };
+}
 
-ipcMain.handle("http:run", async (_event, payload: RunPayload) => runtime.run(payload));
+ipcMain.handle("http:execute", async (_event, payload: ExecutePayload) => runtime.execute(withModules(payload)));
+
+ipcMain.handle("http:run", async (_event, payload: RunPayload) => runtime.run(withModules(payload)));
 
 ipcMain.handle("http:cancel", async () => {
   runtime.cancelHttp();

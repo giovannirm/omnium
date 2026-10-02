@@ -1,10 +1,24 @@
 import { evaluateAssertions, stepPassed } from "./assertions.ts";
 import { CookieJar } from "./cookies.ts";
+import { isMethod, uid } from "./factory.ts";
 import { lookup } from "./jsonpath.ts";
-import type { ExecutionResult, RequestModel } from "./types.ts";
-import { collectPlaceholders, interpolate } from "./variables.ts";
+import { runScript, type ScriptOutcome, type ScriptRequestState, type ScriptResponseState } from "./script.ts";
+import type { AssertionResult, ExecutionResult, Pair, RequestModel, ScriptHook } from "./types.ts";
+import { collectPlaceholders, diffRecords, interpolate } from "./variables.ts";
 
 export const MAX_BODY_BYTES = 1024 * 1024;
+
+/** Hooks externos, capa ambiente y loader de módulos que un host adjunta al paso. */
+export type ScriptBinding = {
+  /** Corren antes del script de la petición, en orden (ambiente, colección). */
+  pre?: ScriptHook[];
+  /** Corren después del script de la petición, en orden (colección, ambiente). */
+  post?: ScriptHook[];
+  /** Copia de la capa ambiente; los cambios vuelven como `environmentChanged`. */
+  environment?: Record<string, string>;
+  /** `omnium.require` en hosts con Node; sin loader el script recibe un error claro. */
+  require?: (specifier: string) => unknown;
+};
 
 export type PreparedRequest = {
   url: string;
@@ -23,13 +37,63 @@ export async function executeRequest(options: {
   persistCookies?: boolean;
   captureBody?: boolean;
   signal?: AbortSignal;
+  /** Hooks de script (ambiente/colección), su capa ambiente y el loader de módulos. */
+  scripts?: ScriptBinding;
 }): Promise<ExecutionResult> {
+  const began = performance.now();
+  const scripts = options.scripts;
+  const initialVariables = options.variables;
+  const state: ScriptState = {
+    logs: [],
+    tests: [],
+    variables: { ...options.variables },
+    environment: { ...(scripts?.environment ?? {}) },
+  };
+  let request = options.request;
+
+  // Pre: primero los hooks externos (ambiente, colección) y al final el de la
+  // petición, para que su `omnium.request` vea lo que los otros ya prepararon.
+  const preHooks = [
+    ...(scripts?.pre ?? []).map((hook) => ({ ...hook, external: true })),
+    ...(request.preScript?.trim()
+      ? [{ label: "script de la petición", code: request.preScript, external: false }]
+      : []),
+  ];
+  for (const hook of preHooks) {
+    const outcome = await runScript(hook.code, {
+      phase: "pre",
+      variables: state.variables,
+      environment: state.environment,
+      request: toScriptRequest(request),
+      require: scripts?.require,
+    });
+    absorb(state, outcome, hook.label, hook.external, false);
+    if (outcome.request) request = applyScriptRequest(request, toScriptRequest(request), outcome.request);
+    if (!outcome.ok) {
+      return {
+        ...emptyResult(request, request.url, []),
+        error: `${hook.label}: ${outcome.error}`,
+        timeMs: elapsed(began),
+        assertions: renumberTests(state.tests),
+        extracted: diffRecords(initialVariables, state.variables),
+        ...scriptEffects(scripts, state),
+      };
+    }
+  }
+
   const started = performance.now();
-  const prepared = prepareRequest(options.request, options.variables, options.jar);
-  const base = emptyResult(options.request, prepared.url || options.request.url, prepared.missing);
+  const prepared = prepareRequest(request, state.variables, options.jar);
+  const base = emptyResult(request, prepared.url || request.url, prepared.missing);
 
   if (prepared.error || !prepared.url) {
-    return { ...base, error: prepared.error ?? "La URL está vacía", timeMs: elapsed(started) };
+    return {
+      ...base,
+      error: prepared.error ?? "La URL está vacía",
+      timeMs: elapsed(started),
+      assertions: renumberTests(state.tests),
+      extracted: diffRecords(initialVariables, state.variables),
+      ...scriptEffects(scripts, state),
+    };
   }
 
   const timeoutMs = clamp(options.request.timeoutMs, 50, 120000);
@@ -88,8 +152,29 @@ export async function executeRequest(options: {
       bodyText,
       bodyJson,
     };
-    const assertions = evaluateAssertions(partial, options.request.assertions);
-    const extracted = extractValues(options.request, partial);
+    const assertions = evaluateAssertions(partial, request.assertions);
+    const extracted = extractValues(request, partial);
+
+    // Post: primero el de la petición y después los externos (colección,
+    // ambiente), para que los últimos vean lo que los anteriores dejaron.
+    const postHooks = [
+      ...(request.postScript?.trim()
+        ? [{ label: "script de la petición", code: request.postScript, external: false }]
+        : []),
+      ...(scripts?.post ?? []).map((hook) => ({ ...hook, external: true })),
+    ];
+    for (const hook of postHooks) {
+      const outcome = await runScript(hook.code, {
+        phase: "post",
+        variables: state.variables,
+        environment: state.environment,
+        response: toScriptResponse(partial),
+        require: scripts?.require,
+      });
+      // Un error en post no borra la respuesta: queda como aserción fallida.
+      absorb(state, outcome, hook.label, hook.external, true);
+    }
+
     const done: ExecutionResult = {
       ...base,
       ok: false,
@@ -105,12 +190,21 @@ export async function executeRequest(options: {
       bodyJson,
       binary,
       truncated,
-      assertions,
-      extracted,
+      assertions: renumberTests([...assertions, ...state.tests]),
+      extracted: { ...extracted, ...diffRecords(initialVariables, state.variables) },
+      ...scriptEffects(scripts, state),
     };
     return { ...done, ok: stepPassed(done) };
   } catch (error) {
-    return { ...base, error: failureMessage(error, options.signal), timeMs: elapsed(started), url: prepared.url };
+    return {
+      ...base,
+      error: failureMessage(error, options.signal),
+      timeMs: elapsed(started),
+      url: prepared.url,
+      assertions: renumberTests(state.tests),
+      extracted: diffRecords(initialVariables, state.variables),
+      ...scriptEffects(scripts, state),
+    };
   }
 }
 
@@ -306,6 +400,100 @@ function extractValues(
     out[name] = typeof got.value === "string" ? got.value : JSON.stringify(got.value);
   }
   return out;
+}
+
+/** Estado que los scripts van dejando a lo largo de un paso. */
+type ScriptState = {
+  logs: string[];
+  tests: AssertionResult[];
+  variables: Record<string, string>;
+  environment: Record<string, string>;
+};
+
+/** Fusiona lo que un script dejó: logs, tests, variables y capa ambiente. */
+function absorb(
+  state: ScriptState,
+  outcome: ScriptOutcome,
+  label: string,
+  external: boolean,
+  asFailure: boolean,
+): void {
+  const prefix = external ? `${label}: ` : "";
+  for (const line of outcome.logs) state.logs.push(prefix + line);
+  for (const test of outcome.tests) state.tests.push({ ...test, message: `${prefix}${test.message}` });
+  Object.assign(state.variables, outcome.variables);
+  Object.assign(state.environment, outcome.environment);
+  if (!outcome.ok && asFailure) state.tests.push({ id: "script:0", passed: false, message: `${label}: ${outcome.error}` });
+}
+
+/** Los tests de todos los scripts se renumeran al final: `script:1..n` en orden. */
+function renumberTests(tests: AssertionResult[]): AssertionResult[] {
+  let counter = 0;
+  return tests.map((test) => (test.id.startsWith("script:") ? { ...test, id: `script:${++counter}` } : test));
+}
+
+function scriptEffects(scripts: ScriptBinding | undefined, state: ScriptState): Partial<ExecutionResult> {
+  const changed = diffRecords(scripts?.environment ?? {}, state.environment);
+  return {
+    ...(state.logs.length ? { logs: state.logs } : {}),
+    ...(Object.keys(changed).length ? { environmentChanged: changed } : {}),
+  };
+}
+
+/** Estado que ve el script en fase pre: valores crudos, sin interpolar, para
+ * que los campos que no toca conserven sus `{{...}}`. */
+function toScriptRequest(request: RequestModel): ScriptRequestState {
+  return {
+    method: request.method,
+    url: request.url,
+    headers: request.headers.filter((row) => row.enabled).map((row) => ({ name: row.key, value: row.value })),
+    body: request.bodyMode === "json" || request.bodyMode === "text" ? request.bodyRaw : "",
+  };
+}
+
+/** Aplica solo lo que el script cambió; lo intocado se queda como estaba. */
+function applyScriptRequest(current: RequestModel, before: ScriptRequestState, after: ScriptRequestState): RequestModel {
+  const next: RequestModel = { ...current };
+  if (after.url !== before.url) next.url = after.url;
+  if (after.method !== before.method && isMethod(after.method.trim().toUpperCase())) {
+    next.method = after.method.trim().toUpperCase() as RequestModel["method"];
+  }
+  if (after.body !== before.body && (current.bodyMode === "json" || current.bodyMode === "text")) next.bodyRaw = after.body;
+  if (JSON.stringify(after.headers) !== JSON.stringify(before.headers)) {
+    next.headers = mergeHeaders(current.headers, after.headers);
+  }
+  return next;
+}
+
+/** Reconstruye los headers habilitados desde la lista del script: conserva
+ * id/secreto por nombre, respeta las filas deshabilitadas y agrega las nuevas. */
+function mergeHeaders(current: Pair[], next: { name: string; value: string }[]): Pair[] {
+  const pending = new Map(next.map((header) => [header.name.trim().toLowerCase(), header]));
+  const out: Pair[] = [];
+  for (const row of current) {
+    if (!row.enabled) {
+      out.push(row);
+      continue;
+    }
+    const hit = pending.get(row.key.trim().toLowerCase());
+    if (!hit) continue;
+    pending.delete(row.key.trim().toLowerCase());
+    out.push(hit.value === row.value ? row : { ...row, value: hit.value });
+  }
+  for (const header of pending.values()) {
+    out.push({ id: uid("pair"), key: header.name, value: header.value, enabled: true });
+  }
+  return out;
+}
+
+function toScriptResponse(partial: {
+  status: number;
+  timeMs: number;
+  headers: { name: string; value: string }[];
+  bodyText: string;
+  bodyJson: unknown | null;
+}): ScriptResponseState {
+  return { status: partial.status, timeMs: partial.timeMs, headers: partial.headers, bodyText: partial.bodyText, bodyJson: partial.bodyJson };
 }
 
 function emptyResult(request: RequestModel, url: string, missing: string[]): ExecutionResult {

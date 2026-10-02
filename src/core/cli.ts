@@ -4,7 +4,8 @@ import { loadFromDir } from "./disk.ts";
 import { importPostman } from "./postman.ts";
 import { parseWorkspace } from "./files.ts";
 import { resolveVariables } from "./variables.ts";
-import type { Collection, CollectionReport, Environment, Workspace } from "./types.ts";
+import type { Collection, CollectionReport, Environment, ScriptHook, Workspace } from "./types.ts";
+import { createModuleLoader } from "../host/moduleLoader.ts";
 
 export type CliIo = {
   out: (line: string) => void;
@@ -55,17 +56,28 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   }
 
   try {
-    const workspace = await loadTarget(options.target);
+    const { workspace, dir } = await loadTarget(options.target);
     const environment = pickEnvironment(workspace, options.environment);
     const collections = pickCollections(workspace, options.collection);
     const runtime = new EngineRuntime();
+    const requireModule = createModuleLoader(dir);
     const reports: { collection: Collection; report: CollectionReport }[] = [];
     for (const collection of collections) {
       const variables = resolveVariables(environment, {}, {
         globals: workspace.globals,
         collection: collection.variables,
       });
-      reports.push({ collection, report: await runtime.run({ requests: collection.requests, variables }) });
+      reports.push({
+        collection,
+        report: await runtime.run({
+          requests: collection.requests,
+          variables,
+          ...scriptHooks(collection, environment),
+          environment: environment?.variables,
+          moduleDir: dir,
+          requireModule,
+        }),
+      });
     }
 
     const failed = reports.reduce((total, entry) => total + entry.report.failed, 0);
@@ -105,23 +117,37 @@ export function parseOptions(args: string[]): CliOptions {
   return options;
 }
 
-async function loadTarget(target: string): Promise<Workspace> {
+async function loadTarget(target: string): Promise<{ workspace: Workspace; dir: string | null }> {
   const info = await stat(target).catch(() => null);
   if (!info) throw new Error(`No existe: ${target}`);
-  if (info.isDirectory()) return loadFromDir(target);
+  if (info.isDirectory()) return { workspace: await loadFromDir(target), dir: target };
 
   const raw = JSON.parse(await readFile(target, "utf8")) as unknown;
-  if (raw && typeof raw === "object" && "collections" in raw) return parseWorkspace(raw);
+  if (raw && typeof raw === "object" && "collections" in raw) return { workspace: parseWorkspace(raw), dir: null };
   const collection = importPostman(raw);
   return {
-    version: 1,
-    name: collection.name,
-    activeEnvironmentId: null,
-    globals: [],
-    environments: [],
-    collections: [collection],
-    history: [],
+    dir: null,
+    workspace: {
+      version: 1,
+      name: collection.name,
+      activeEnvironmentId: null,
+      globals: [],
+      environments: [],
+      collections: [collection],
+      history: [],
+    },
   };
+}
+
+/** Hooks externos de una corrida: ambiente primero (pre) y al final (post). */
+function scriptHooks(collection: Collection, environment: Environment | null): { pre?: ScriptHook[]; post?: ScriptHook[] } {
+  const pre: ScriptHook[] = [];
+  const post: ScriptHook[] = [];
+  if (environment?.preScript?.trim()) pre.push({ label: "ambiente", code: environment.preScript });
+  if (collection.preScript?.trim()) pre.push({ label: "colección", code: collection.preScript });
+  if (collection.postScript?.trim()) post.push({ label: "colección", code: collection.postScript });
+  if (environment?.postScript?.trim()) post.push({ label: "ambiente", code: environment.postScript });
+  return { ...(pre.length ? { pre } : {}), ...(post.length ? { post } : {}) };
 }
 
 export function pickEnvironment(workspace: Workspace, asked: string | null): Environment | null {
@@ -160,11 +186,13 @@ function toJson(workspace: Workspace, environment: Environment | null, reports: 
     ok: reports.every((entry) => entry.report.failed === 0),
     area: workspace.name,
     environment: environment?.name ?? null,
+    environmentChanged: mergeChanged(reports),
     collections: reports.map(({ collection, report }) => ({
       id: collection.id,
       name: collection.name,
       passed: report.passed,
       failed: report.failed,
+      environmentChanged: report.environmentChanged ?? {},
       steps: report.steps.map((step) => ({
         id: step.requestId,
         name: step.name,
@@ -173,10 +201,17 @@ function toJson(workspace: Workspace, environment: Environment | null, reports: 
         status: step.result.status,
         timeMs: step.result.timeMs,
         error: step.result.error,
+        logs: step.result.logs ?? [],
         failedAssertions: step.result.assertions.filter((item) => !item.passed).map((item) => item.message),
       })),
     })),
   };
+}
+
+function mergeChanged(reports: { report: CollectionReport }[]): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const { report } of reports) Object.assign(merged, report.environmentChanged ?? {});
+  return merged;
 }
 
 function print(
@@ -196,6 +231,9 @@ function print(
         ? step.result.error
         : `${step.result.status ?? "—"} · ${step.result.timeMs} ms`;
       io.out(`  ${mark} ${step.result.method} ${step.name} — ${where}`);
+      for (const line of step.result.logs ?? []) {
+        io.out(`      · ${line}`);
+      }
       for (const assertion of step.result.assertions) {
         if (assertion.passed) continue;
         io.out(`      ${assertion.message}`);
@@ -204,6 +242,8 @@ function print(
   }
   const passed = reports.reduce((total, entry) => total + entry.report.passed, 0);
   const failed = reports.reduce((total, entry) => total + entry.report.failed, 0);
+  const changed = mergeChanged(reports);
+  if (Object.keys(changed).length) io.out(`Ambiente actualizado: ${Object.keys(changed).join(", ")}`);
   io.out("");
   io.out(`Resultado: ${passed} bien, ${failed} falló`);
 }

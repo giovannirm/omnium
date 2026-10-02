@@ -1,5 +1,5 @@
 import { CookieJar, type CookieView } from "./cookies.ts";
-import { executeRequest } from "./execute.ts";
+import { executeRequest, type ScriptBinding } from "./execute.ts";
 import { clampPlan, runLoad } from "./load.ts";
 import { runCollection } from "./runner.ts";
 import type {
@@ -10,10 +10,22 @@ import type {
   LoadSnapshot,
   RunPayload,
 } from "./types.ts";
+import { pairsToRecord } from "./variables.ts";
 
 export type EngineEvents = {
   onTick?: (snapshot: LoadSnapshot) => void;
 };
+
+/** Arma el binding de scripts del payload: hooks externos, capa ambiente y el
+ * loader que el host adjuntó en proceso (JSON lo habría descartado). */
+function scriptBinding(payload: ExecutePayload | RunPayload): ScriptBinding {
+  const binding: ScriptBinding = {};
+  if (payload.pre?.length) binding.pre = payload.pre;
+  if (payload.post?.length) binding.post = payload.post;
+  if (payload.environment) binding.environment = pairsToRecord(payload.environment);
+  if (payload.requireModule) binding.require = payload.requireModule;
+  return binding;
+}
 
 /**
  * Runtime único del motor: concentra el jar de cookies, la cancelación de
@@ -34,6 +46,7 @@ export class EngineRuntime {
         jar: this.jar,
         persistCookies: true,
         signal: active,
+        scripts: scriptBinding(payload),
       }),
     );
   }
@@ -46,6 +59,7 @@ export class EngineRuntime {
         variables: payload.variables ?? {},
         jar: this.jar,
         signal: active,
+        scripts: scriptBinding(payload),
       }),
     );
   }
@@ -57,6 +71,8 @@ export class EngineRuntime {
   /**
    * Ejecuta una carga y devuelve el snapshot final. Arrancar una carga nueva
    * cancela la anterior; el snapshot devuelto lleva `stopped: true` si se cortó.
+   * La carga corre sin scripts de usuario (decisión de alcance: mil peticiones
+   * con scripts serían impredecibles); solo mide y clasifica respuestas.
    */
   async startLoad(payload: LoadPayload, events: EngineEvents = {}): Promise<LoadSnapshot> {
     if (!payload?.request) throw new Error("La carga está incompleta");

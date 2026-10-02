@@ -120,6 +120,10 @@ export type ExecutionResult = {
   assertions: AssertionResult[];
   extracted: Record<string, string>;
   missing: string[];
+  /** Salida de `omnium.log` de los scripts que corrieron en este paso. */
+  logs?: string[];
+  /** Claves del ambiente que los scripts modificaron; el host las aplica. */
+  environmentChanged?: Record<string, string>;
 };
 
 export type StepReport = {
@@ -134,6 +138,8 @@ export type CollectionReport = {
   passed: number;
   failed: number;
   variables: Record<string, string>;
+  /** Cambios de ambiente acumulados en toda la corrida. */
+  environmentChanged?: Record<string, string>;
 };
 
 export type LoadPlan = {
@@ -169,14 +175,31 @@ export type LoadSnapshot = {
   stopped: boolean;
 };
 
+/** Gancho de script externo (ambiente o colección) con etiqueta para errores y UI. */
+export type ScriptHook = { label: string; code: string };
+
 export type ExecutePayload = {
   request: RequestModel;
   variables: Record<string, string>;
+  /** Hooks externos: `pre` corre antes del script de la petición, `post` después. */
+  pre?: ScriptHook[];
+  post?: ScriptHook[];
+  /** Pares del ambiente activo; los scripts `omnium.env.*` leen y escriben esta capa. */
+  environment?: Pair[];
+  /** Directorio del área en disco; los hosts con Node lo usan para armar `omnium.require`. */
+  moduleDir?: string | null;
+  /** Adjunto en proceso por el host; JSON (HTTP) lo descarta. */
+  requireModule?: (specifier: string) => unknown;
 };
 
 export type RunPayload = {
   requests: RequestModel[];
   variables: Record<string, string>;
+  pre?: ScriptHook[];
+  post?: ScriptHook[];
+  environment?: Pair[];
+  moduleDir?: string | null;
+  requireModule?: (specifier: string) => unknown;
 };
 
 export type LoadPayload = {
