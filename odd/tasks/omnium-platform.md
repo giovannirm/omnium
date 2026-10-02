@@ -33,8 +33,7 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 ## Restricciones
 
 - Sin nuevas dependencias runtime (solo react/react-dom); el store de estado es propio.
-- `npm run check` (tsc) y `npm test` (44 tests al cierre de Fase A) deben seguir en verde
-  en cada tarea.
+- `npm run check` (tsc) y `npm test` deben seguir en verde en cada tarea (52 tests tras B1).
 - Código y artefactos técnicos en español solo donde el proyecto ya lo usa (strings, tests);
   identificadores en inglés.
 - Commits convencionales, sin atribución a IA.
@@ -61,7 +60,8 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 | PR 8 | `92a01c7` refactor(ui): ejecución y carga en la capa de estado | 327 |
 | PR 9 | `0e42990` refactor(ui): chrome de la interfaz en la capa de estado | 346 |
 | PR 10 | `b5b2593` test(server): standalone end to end | 84 |
-| docs | `0fd0d9e` + este commit: plan/avance | — |
+| PR 11 | `487b2c6` feat(cli): run headless con informe | 364 |
+| docs | `0fd0d9e`, `a6fb563`, `be6b4bd` + este commit: plan/avance | — |
 
 ## Criterios de aceptación
 
@@ -110,6 +110,13 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 
 ### Fase B — Capacidades de plataforma
 
+- [x] **B1** CLI/headless: `npm run omnium -- run <workspace|colección.json>` con
+       `--collection`, `--env`, `--json`; informe texto/JSON; códigos 0/1/2.
+       `src/core/cli.ts` (lógica + `runCli` testeable), `src/cli.ts` (entrada delgada),
+       reutiliza `EngineRuntime`, `loadFromDir`/`saveToDir`, `importPostman`,
+       `parseWorkspace`. Ruta: inline. ✅ check + 8 tests nuevos en
+       `src/core/cli.test.ts` (52 totales) + build verdes. Commit `487b2c6`.
+
 - [ ] **B1** CLI/headless: `omnium run <workspace|colección>` con informe y exit code.
 - [ ] **B2** Secretos en entornos: marca `secret` en `Pair`, masking en UI/export/history.
 - [ ] **B3** Scripting pre/post request (alcance a definir con el usuario antes de arrancar).
@@ -127,5 +134,6 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
   composición + diálogos presentacionales; `useAppState.ts` 605, `model.ts` 295.
   A5 completo (`b5b2593`): 44 tests, smoke de `npm run serve`.
 - **Fase A cerrada**. Pendiente único: smoke visual de la UI en navegador.
-- Próximo paso: **Fase B** — B1 CLI/headless; B2 secretos en entornos; B3 scripting
-  (alcance a definir con el usuario antes de arrancar).
+- 2026-10-02: **B1 completo** (`487b2c6`): CLI headless `npm run omnium -- run …`,
+  8 tests nuevos → 52 en verde; smoke de `help` y código de salida 2 verificado.
+- Próximo paso: **B2** secretos en entornos. Después **B3** (definir alcance con el usuario).
