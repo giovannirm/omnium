@@ -55,6 +55,9 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 | PR 3 | `8e0db9a` refactor(server): router compartido | 395 |
 | PR 4 | `ac804b3` feat(server): standalone `npm run serve` | 150 |
 | PR 5 | `d828a8f` refactor(electron): IPC delgado | 85 |
+| PR 6 | `0958373` refactor(ui): modelo puro extraído | 724 — **size:exception** (una sola unidad coherente, migración de `Sidebar.tsx` incluida) |
+| PR 7 | `eec4a12` refactor(ui): workspace + acciones de entidades | 539 — **size:exception** (unidad coherente de migración) |
+| PR 8 | `92a01c7` refactor(ui): ejecución y carga en la capa de estado | 327 |
 
 ## Criterios de aceptación
 
@@ -81,10 +84,20 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
        en index.html), fallback SPA 200.
 - [x] **A3** `electron/main.ts` pasa a adaptador delgado sobre `EngineRuntime`
        (handlers IPC de una línea). Ruta: inline. ✅ check + `build:electron` + 26 tests.
-- [ ] **A4** Capa de estado `src/ui/state/*` (store propio con `useSyncExternalStore`):
-       workspace+autosave, selección/pestañas, resultados, load, toast/modal.
-       `App.tsx` queda como composición. Ruta: inline. Verificación: check + test +
-       smoke manual de la UI.
+- [ ] **A4** Capa de estado `src/ui/state/*` (hook `useAppState` + modelo puro):
+        - [x] A4-1 `model.ts` (295 líneas, lógica pura) + 11 tests → `Sidebar.tsx` re-exporta
+          `Selection`. Commit `0958373`.
+        - [x] A4-2 dominio workspace: load/autosave/beforeunload/prune, `adopt`, `openArea`,
+          `createArea`, `exportArea`, selección/pestañas, toast, cookies y todas las
+          mutaciones de colecciones/peticiones/ambientes. Commit `eec4a12`.
+        - [x] A4-3 dominio ejecución: `results`, `report`, `runtime`, `pending`, `pane`,
+          `load`, `plan`, `send`, `testCollection`, `startLoad`, `remember` + efecto de
+          `onLoadTick`/`onLoadDone`. Commit `92a01c7`.
+        - [ ] A4-4 chrome: modal, pane/layout/resize, query, atajos, menú, `importArea`,
+          `beginImport`, `commands` → `App.tsx` queda solo composición + JSX.
+        Ruta: inline (delegación bloqueada). ✅ check + 37 tests + `build:renderer` verdes
+        en A4-1..A4-3. **Pendiente: smoke manual de la UI al cerrar A4** (requiere
+        navegador; no ejecutado todavía).
 - [ ] **A5** Tests de A1/A2 y cierre de Fase A. Ruta: inline.
 
 ### Fase B — Capacidades de plataforma
@@ -97,4 +110,8 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 
 - 2026-10-01: feature creada; exploración y diagnóstico completados; baseline verde
   (`tsc` limpio, 19/19 tests). Alcance decidido: "Ambas, por capas".
-- Próximo paso: decisión del usuario sobre chain strategy (forecast > 400 líneas) → A1.
+- 2026-10-02: A1–A3 verdes (motor único, router+serve, IPC delgado). A4 en curso:
+  A4-1..A4-3 completados y commiteados (`0958373`, `eec4a12`, `92a01c7`); tests 37/37,
+  `App.tsx` bajó de 1039 → 647 líneas, `useAppState.ts` 436.
+- Próximo paso: **A4-4** (chrome → `useAppState`), luego smoke manual de la UI, A5
+  (tests de cierre de Fase A) y Fase B.
