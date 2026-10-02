@@ -116,6 +116,10 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 
 ## Progreso
 
+> ⚠️ **Espejo Engram pendiente**: `mem_save` del topic `odd/omnium-platform/tasks` falla en
+> esta sesión (el servidor Engram no confirma el registro de la sesión, 3 intentos). El
+> archivo local es la fuente de verdad hasta que se pueda re-sincronizar.
+
 - 2026-10-01: feature creada; exploración y diagnóstico completados; baseline verde
   (`tsc` limpio, 19/19 tests). Alcance decidido: "Ambas, por capas".
 - 2026-10-02: A1–A3 verdes (motor único, router+serve, IPC delgado). A4 completo
