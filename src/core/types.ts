@@ -48,12 +48,18 @@ export type RequestModel = {
   extractors: Extractor[];
   timeoutMs: number;
   followRedirects: boolean;
+  /** Script que corre antes de la petición (fase pre). */
+  preScript?: string;
+  /** Script que corre después de la respuesta (fase post). */
+  postScript?: string;
 };
 
 export type Environment = {
   id: string;
   name: string;
   variables: Pair[];
+  preScript?: string;
+  postScript?: string;
 };
 
 export type Collection = {
@@ -61,6 +67,8 @@ export type Collection = {
   name: string;
   variables: Pair[];
   requests: RequestModel[];
+  preScript?: string;
+  postScript?: string;
 };
 
 export type HistoryEntry = {

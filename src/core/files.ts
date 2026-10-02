@@ -34,6 +34,8 @@ export function workspaceToFiles(workspace: Workspace): Record<string, string> {
       name: collection.name,
       variables: collection.variables,
       requestOrder: collection.requests.map((request) => request.id),
+      ...(collection.preScript ? { preScript: collection.preScript } : {}),
+      ...(collection.postScript ? { postScript: collection.postScript } : {}),
     });
     for (const request of collection.requests) {
       files[`collections/${safe(collection.id)}/${safe(request.id)}.json`] = pretty(request);
@@ -55,7 +57,14 @@ export function filesToWorkspace(files: Record<string, string>): Workspace {
     const requests = ordered(stringList(info.requestOrder), requestFiles(group), (requestId, raw) =>
       asRequest(parseJson(raw, requestId)),
     );
-    return { id: ident(info.id, "colección"), name: text(info.name, "Colección"), variables: asPairs(info.variables), requests };
+    return {
+      id: ident(info.id, "colección"),
+      name: text(info.name, "Colección"),
+      variables: asPairs(info.variables),
+      requests,
+      ...(typeof info.preScript === "string" ? { preScript: info.preScript } : {}),
+      ...(typeof info.postScript === "string" ? { postScript: info.postScript } : {}),
+    };
   });
   let history: HistoryEntry[] = [];
   if (files["history.json"]) {
@@ -101,6 +110,8 @@ function asCollection(raw: unknown): Collection {
     name: text(record.name, "Colección"),
     variables: asPairs(record.variables),
     requests: array(record.requests).map((item) => asRequest(item)),
+    ...(typeof record.preScript === "string" ? { preScript: record.preScript } : {}),
+    ...(typeof record.postScript === "string" ? { postScript: record.postScript } : {}),
   };
 }
 
@@ -110,6 +121,8 @@ function asEnvironment(raw: unknown): Environment {
     id: ident(record.id, "ambiente"),
     name: text(record.name, "Ambiente"),
     variables: asPairs(record.variables),
+    ...(typeof record.preScript === "string" ? { preScript: record.preScript } : {}),
+    ...(typeof record.postScript === "string" ? { postScript: record.postScript } : {}),
   };
 }
 
@@ -132,6 +145,8 @@ function asRequest(raw: unknown): RequestModel {
     extractors: asExtractors(record.extractors),
     timeoutMs: numberIn(record.timeoutMs, 30000, 50, 120000),
     followRedirects: record.followRedirects !== false,
+    ...(typeof record.preScript === "string" ? { preScript: record.preScript } : {}),
+    ...(typeof record.postScript === "string" ? { postScript: record.postScript } : {}),
   });
   return base;
 }
