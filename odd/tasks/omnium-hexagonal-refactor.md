@@ -47,11 +47,11 @@ están implícitos, partir los dos archivos "dios" y eliminar la única arista i
   - [x] Nuevo `src/core/execute.test.ts` con fake sender: pre que falla → sender jamás
         llamado (aborta antes de la red); sender recibe url/init preparados; post que
         falla → respuesta intacta + aserción fallida (3 tests nuevos → 77)
-- [ ] **R2 — Partir `execute.ts`** (facade: `execute.ts` re-exporta)
-  - [ ] `src/core/prepare.ts`: `prepareRequest`, `applyAuth`, `toCurl`, `PreparedRequest`, utils de URL/header
-  - [ ] `src/core/http.ts`: `readLimitedBody`, `collectHeaders`, `parseJson`, `isBinary`, `decodeText`, `MAX_BODY_BYTES`, paso de envío con `HttpSender`
-  - [ ] `src/core/scriptBridge.ts`: `ScriptState`, `absorb`, `renumberTests`, `scriptEffects`, `toScriptRequest`/`applyScriptRequest`/`mergeHeaders`, `toScriptResponse`
-  - [ ] `execute.ts` queda como orquestador (`executeRequest` + `emptyResult` + errores/timing)
+- [x] **R2 — Partir `execute.ts`** (facade: `execute.ts` re-exporta) — commit `3898a14`+siguiente
+  - [x] `src/core/prepare.ts`: `prepareRequest`, `applyAuth`, `toCurl`, `PreparedRequest`, utils de URL/header (186 líneas)
+  - [x] `src/core/http.ts`: `readLimitedBody`, `collectHeaders`, `parseJson`, `isBinary`, `decodeText`, `MAX_BODY_BYTES`, `sendPrepared` con `HttpSender` (117 líneas)
+  - [x] `src/core/scriptBridge.ts`: `ScriptBinding`, `ScriptState`, `absorb`, `renumberTests`, `scriptEffects`, `toScriptRequest`/`applyScriptRequest`/`mergeHeaders`, `toScriptResponse` (115 líneas)
+  - [x] `execute.ts` queda como orquestador (`executeRequest` + `emptyResult` + errores/timing): **278 líneas**
 - [ ] **R3 — Partir `useAppState.ts`** (mismo contrato `AppState` vía facade)
   - [ ] Leer archivo completo y fijar seam por secciones ya marcadas (workspace/selección/ejecución/carga/chrome)
   - [ ] Sub-hooks o módulos puros; `useAppState` compone y conserva la forma de `AppState`
