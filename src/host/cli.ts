@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { EngineRuntime } from "../core/engine.ts";
 import { loadFromDir } from "./disk.ts";
-import { importPostman } from "../core/postman.ts";
+import { detectFormat, importCollection } from "../core/interchange.ts";
 import { parseWorkspace } from "../core/files.ts";
 import { externalHooks } from "../core/script.ts";
 import { resolveVariables } from "../core/variables.ts";
@@ -55,7 +55,8 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   }
 
   try {
-    const { workspace, dir } = await loadTarget(options.target);
+    const { workspace, dir, warnings } = await loadTarget(options.target);
+    for (const warning of warnings) io.err(`Aviso: ${warning}`);
     const environment = pickEnvironment(workspace, options.environment);
     const collections = pickCollections(workspace, options.collection);
     const runtime = new EngineRuntime();
@@ -116,16 +117,19 @@ export function parseOptions(args: string[]): CliOptions {
   return options;
 }
 
-async function loadTarget(target: string): Promise<{ workspace: Workspace; dir: string | null }> {
+async function loadTarget(target: string): Promise<{ workspace: Workspace; dir: string | null; warnings: string[] }> {
   const info = await stat(target).catch(() => null);
   if (!info) throw new Error(`No existe: ${target}`);
-  if (info.isDirectory()) return { workspace: await loadFromDir(target), dir: target };
+  if (info.isDirectory()) return { workspace: await loadFromDir(target), dir: target, warnings: [] };
 
-  const raw = JSON.parse(await readFile(target, "utf8")) as unknown;
-  if (raw && typeof raw === "object" && "collections" in raw) return { workspace: parseWorkspace(raw), dir: null };
-  const collection = importPostman(raw);
+  const text = await readFile(target, "utf8");
+  if (detectFormat(text, target) === "omnium-area") {
+    return { workspace: parseWorkspace(JSON.parse(text) as unknown), dir: null, warnings: [] };
+  }
+  const { collection, warnings } = importCollection(text, target);
   return {
     dir: null,
+    warnings,
     workspace: {
       version: 1,
       name: collection.name,

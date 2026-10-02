@@ -10,7 +10,7 @@ import { sampleWorkspace } from "./sample.ts";
 import { resolveVariables } from "./variables.ts";
 
 test("importa una colección de Postman con carpeta, auth y variables", () => {
-  const collection = importPostman({
+  const { collection } = importPostman({
     info: { name: "Tienda", schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
     variable: [{ key: "base", value: "https://tienda.test" }],
     item: [
