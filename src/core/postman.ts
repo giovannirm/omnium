@@ -171,8 +171,9 @@ function readUrl(value: unknown): { url: string; params: Pair[] } {
   return { url: `${protocol}://${host}${port}/${path}`, params };
 }
 
-/** Parte la query del `raw` hacia `params`: `prepare` la re-inserta al ejecutar. */
-function splitQuery(raw: string): { url: string; params: Pair[] } {
+/** Parte la query del `raw` hacia `params`: `prepare` la re-inserta al ejecutar.
+ * Compartido con el importador de Insomnia (mismo contrato de URL+params). */
+export function splitQuery(raw: string): { url: string; params: Pair[] } {
   const hash = raw.indexOf("#");
   const withoutHash = hash >= 0 ? raw.slice(0, hash) : raw;
   const fragment = hash >= 0 ? raw.slice(hash) : "";
@@ -222,7 +223,8 @@ function scriptOf(value: unknown): string {
   return "";
 }
 
-function joinScripts(head: string | undefined, tail: string | undefined): string | undefined {
+/** Une scripts ancestro→descendiente (o `undefined` si no hay ninguno). */
+export function joinScripts(head: string | undefined, tail: string | undefined): string | undefined {
   if (head && tail) return `${head}\n\n${tail}`;
   if (head) return head;
   if (tail) return tail;

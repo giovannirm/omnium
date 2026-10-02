@@ -75,9 +75,17 @@ test("importCollection rechaza un área como colección, con error claro", () =>
 });
 
 test("importCollection rechaza formatos no soportados nombrando el formato", () => {
-  const insomnia = JSON.stringify({ __export_format: 4, resources: [] });
-  assert.throws(() => importCollection(insomnia, "export.json"), /Insomnia/);
   assert.throws(() => importCollection("meta {\n}\nhttp {\n}\n", "x.bru"), /Bruno/);
+});
+
+test("importCollection explica un Insomnia v4 vacío (sin workspace)", () => {
+  const insomnia = JSON.stringify({ __export_format: 4, resources: [] });
+  assert.throws(() => importCollection(insomnia, "export.json"), /workspace de colección/);
+});
+
+test("detecta Insomnia v5 JSON por el discriminador type", () => {
+  const text = JSON.stringify({ type: "collection.insomnia.rest/5.0", name: "Col", collection: [] });
+  assert.equal(detectFormat(text, "export.json"), "insomnia");
 });
 
 test("importCollection avisa si el JSON está roto", () => {

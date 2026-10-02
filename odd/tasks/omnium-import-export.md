@@ -88,11 +88,20 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
         roundtrip import→export→import)
   - [x] Bug propio atrapado: `??` no cae con string vacío en `joinScripts`; raíz duplicada
         en cada petición (el motor ya corre colección por petición) — corregido con test
-- [ ] **T3 — Insomnia (v4 JSON + v5 YAML)**
-  - [ ] `yamlMini.ts` (subconjunto seguro, sin dependencias) + tests
-  - [ ] `insomnia.ts`: `__export_format: 3|4` (resources) y v5 (`insomnia.yaml`: resources con
-        `body`/`headers`/`authentication`); ambiente → colección/variables
-  - [ ] Tests: v4 JSON y v5 YAML con script multilínea
+- [x] **T3 — Insomnia (v4 JSON + v5 YAML)** ✅
+  - [x] `yamlMini.ts` (362 líneas, sin dependencias): mapas/secuencias por sangría (incluye
+        secuencia a la misma sangría de su clave), escalares planos/citados, flow `[..]`/`{..}`,
+        bloques `|`/`|-`/`>` con chomping, comentarios, `---`; errores con número de línea
+  - [x] `insomnia.ts` (392): `__export_format: 3|4` (resources, JSON o YAML) y v5
+        (`collection.insomnia.rest/5.0`, YAML o JSON serializado); carpetas → prefijo;
+        ambiente base → variables, sub-entornos → avisos; `{{ _.x }}` → `{{x}}`;
+        scripts `preRequest`/`afterResponse` multilínea; auth basic/bearer/apikey y
+        aviso para oauth2/etc.; API `insomnia.*` → aviso honesto (usa pm/omnium);
+        export v4 JSON reconstruyendo carpetas desde el prefijo ` / `
+  - [x] Tests: 11 yamlMini + 4 insomnia (v4 con avisos, v5 con script multilínea y body
+        en bloque, roundtrip import→export→import, dispatcher) + 2 de detección
+  - [x] Bugs propios atrapados: export omitía peticiones de raíz; `vars()` dejaba espacio
+        sobrante en `{{base_url }}`; orden carpetas/raíz en el roundtrip
 - [ ] **T4 — Bruno (`.bru`)**
   - [ ] Parser `bruno.ts`: `meta/params/headers/auth/body/http/script/assert` (+ `folder`)
   - [ ] Export: colección → archivos `.bru` (request por archivo; ver límite en Progreso)
@@ -138,3 +147,4 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 - [x] Exploración (postman.ts, script.ts, tipos, UI/CLI actuales) y decisión de alcance
 - [x] Documento creado (antes de la primera escritura de código)
 - [x] T1+T2 ✅ (99/99 tests, tsc + build verdes) → T3 → T9
+- [x] T3 ✅ (115/115 tests, tsc + build verdes) → T4
