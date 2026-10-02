@@ -3,10 +3,14 @@ import { CookieJar } from "./cookies.ts";
 import { isMethod, uid } from "./factory.ts";
 import { lookup } from "./jsonpath.ts";
 import { runScript, type ScriptOutcome, type ScriptRequestState, type ScriptResponseState } from "./script.ts";
+import type { HttpSender } from "./ports.ts";
 import type { AssertionResult, ExecutionResult, Pair, RequestModel, ScriptHook } from "./types.ts";
 import { collectPlaceholders, diffRecords, interpolate } from "./variables.ts";
 
 export const MAX_BODY_BYTES = 1024 * 1024;
+
+/** Default del puerto `HttpSender`: el emisor que usan todos los hosts. */
+const defaultSender: HttpSender = (url, init) => fetch(url, init);
 
 /** Hooks externos, capa ambiente y loader de módulos que un host adjunta al paso. */
 export type ScriptBinding = {
@@ -39,9 +43,12 @@ export async function executeRequest(options: {
   signal?: AbortSignal;
   /** Hooks de script (ambiente/colección), su capa ambiente y el loader de módulos. */
   scripts?: ScriptBinding;
+  /** Puerto de salida HTTP; default: `fetch` global. */
+  send?: HttpSender;
 }): Promise<ExecutionResult> {
   const began = performance.now();
   const scripts = options.scripts;
+  const send = options.send ?? defaultSender;
   const initialVariables = options.variables;
   const state: ScriptState = {
     logs: [],
@@ -102,7 +109,7 @@ export async function executeRequest(options: {
   const signal = AbortSignal.any(signals);
 
   try {
-    const response = await fetch(prepared.url, {
+    const response = await send(prepared.url, {
       method: prepared.method,
       headers: prepared.headers,
       body: prepared.body,
