@@ -102,5 +102,6 @@ están implícitos, partir los dos archivos "dios" y eliminar la única arista i
 
 **Estado final**: refactor completo. `execute.ts` 633→278, `useAppState.ts` 631→345,
 `cli.ts` fuera de `core` (arista invertida eliminada), greps de capa limpios,
-77/77 tests + `tsc` + build verdes. Pendiente del usuario: push y creación de
-PR17–PR20 (stacked-to-main); smoke visual de la UI en navegador.
+77/77 tests + `tsc` + build verdes. Entrega cerrada: push hecho; PR17–PR20 del
+plan = **#3 (R1), #4 (R2), #5 (R3), #6 (R4)** en GitHub, apilados sobre la
+fase B (#2) y MERGEABLE; smoke visual de la UI ejecutado (12/12 + captura).

@@ -213,7 +213,9 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
   y de HTTP (`/__omnium/execute` con scripts). Orden de hooks: ambiente →
   colección → petición en pre; inverso en post. Un pre que falla aborta antes
   de la red; un post que falla queda como aserción fallida (`script:n`).
-- **Pendientes**: smoke visual de la UI en navegador (editor de scripts sin
-  revisar en vivo), espejo Engram del plan (`mem_save` falla en esta sesión),
-  y la entrega en PR (rama `feat/engine-runtime`, 24 commits sin push;
-  push/PR son decisión del usuario).
+- **Pendientes (actualizado en la entrega)**: smoke visual de la UI ejecutado
+  (12/12 aserciones DOM en Electron contra Vite + captura; el editor de scripts
+  quedó renderizado en vivo), entrega hecha — `feat/engine-runtime` pusheda y
+  la plataforma va en **#1 (Fase A)** y **#2 (Fase B)**, apiladas sobre
+  `master`; queda el espejo Engram del plan (`mem_save` sigue sin registrar
+  sesión en este entorno) y mergear la cadena #1 → #11 en orden.
