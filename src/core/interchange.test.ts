@@ -142,7 +142,7 @@ test("exportCollectionAs genera Postman e Insomnia como JSON con nombre seguro",
   assert.equal((JSON.parse(insomnia[0].content) as { __export_format: number }).__export_format, 4);
 });
 
-test("exportCollectionAs en Bruno devuelve un .bru por petición", () => {
+test("exportCollectionAs en Bruno devuelve proyecto Git-friendly", () => {
   const text = JSON.stringify({
     info: { name: "Dos peticiones", schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
     item: [
@@ -152,9 +152,10 @@ test("exportCollectionAs en Bruno devuelve un .bru por petición", () => {
   });
   const { collection } = importCollection(text, "c.json");
   const bru = exportCollectionAs("bruno", collection);
-  assert.equal(bru.length, 2);
-  assert.match(bru[0].name, /\.bru$/);
-  assert.match(bru[0].content, /^meta \{/);
+  assert.equal(bru.length, 3);
+  assert.equal(bru[0].name, "dos-peticiones/bruno.json");
+  assert.match(bru[1].name, /\.bru$/);
+  assert.match(bru[1].content, /^meta \{/);
 });
 
 test("fileSlug limpia acentos, separadores y queda en minúsculas", () => {

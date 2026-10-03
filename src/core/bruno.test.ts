@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { exportBru, importBru } from "./bruno.ts";
+import { exportBru, exportBruProject, importBru, importBruProject } from "./bruno.ts";
 
 const REQUEST = `meta {
   name: Crear usuario
@@ -165,4 +165,30 @@ params:path {
   const request = importBru(bru).collection.requests[0];
   assert.equal(request.method, "GET"); // PURGE no existe en Omnium → aviso + GET
   assert.equal(request.url, "https://api.test/cache/productos");
+});
+
+test("exporta e importa proyecto Bruno Git-friendly con bruno.json y carpetas", () => {
+  const collection = {
+    id: "col-1",
+    name: "API Tienda",
+    variables: [],
+    requests: [
+      importBru(REQUEST).collection.requests[0]!,
+      { ...importBru(REQUEST).collection.requests[0]!, id: "req-2", name: "Admin / Crear token", url: "https://api.test/token" },
+    ],
+  };
+
+  const files = exportBruProject(collection);
+  assert.equal(files[0]?.path, "api-tienda/bruno.json");
+  assert.ok(files.some((file) => file.path === "api-tienda/admin/02-crear-token.bru"));
+
+  const roundtrip = importBruProject(files);
+  assert.equal(roundtrip.collection.name, "API Tienda");
+  assert.deepEqual(
+    roundtrip.collection.requests.map((request) => [request.name, request.method, request.url]),
+    [
+      ["crear-usuario", "POST", "https://api.test/users"],
+      ["admin / crear-token", "POST", "https://api.test/token"],
+    ],
+  );
 });

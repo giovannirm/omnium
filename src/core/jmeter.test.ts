@@ -131,8 +131,10 @@ test("importa plan JMeter: colección, variables, scope, body raw y aserciones",
   );
 
   assert.equal(warnings.length, 2);
-  assert.match(warnings[0] ?? "", /clientes\.csv/);
-  assert.match(warnings[1] ?? "", /4 hilos/);
+  assert.match(warnings[0] ?? "", /4 hilos/);
+  assert.match(warnings[0] ?? "", /ramp-up 0s/);
+  assert.match(warnings[1] ?? "", /clientes\.csv/);
+  assert.match(warnings[1] ?? "", /Omnium no lee el CSV/);
 });
 
 test("errores: no es un plan y plan sin peticiones", () => {
@@ -205,6 +207,57 @@ test("detector: contenido y extensión reconocen JMeter", () => {
   assert.equal(detectFormat(PLAN, "plan.txt"), "jmeter");
   assert.equal(detectFormat(PLAN, "plan.jmx"), "jmeter");
   assert.deepEqual(importCollection(PLAN, "plan.jmx").collection.name, "API Tienda");
+});
+
+test("importa metadata avanzada: ThreadGroup, JSONPostProcessor, RegexExtractor y header assertions", () => {
+  const plan = `<jmeterTestPlan version="1.2"><hashTree>
+    <ThreadGroup testname="Carga checkout">
+      <stringProp name="ThreadGroup.num_threads">12</stringProp>
+      <stringProp name="ThreadGroup.ramp_time">30</stringProp>
+      <boolProp name="ThreadGroup.scheduler">true</boolProp>
+      <stringProp name="ThreadGroup.duration">120</stringProp>
+      <elementProp name="ThreadGroup.main_controller" elementType="LoopController">
+        <stringProp name="LoopController.loops">5</stringProp>
+      </elementProp>
+    </ThreadGroup>
+    <hashTree>
+      <HTTPSamplerProxy testname="Checkout">
+        <stringProp name="HTTPSampler.domain">api.test</stringProp>
+        <stringProp name="HTTPSampler.path">/checkout</stringProp>
+        <stringProp name="HTTPSampler.method">GET</stringProp>
+      </HTTPSamplerProxy>
+      <hashTree>
+        <JSONPostProcessor testname="Extrae orden">
+          <stringProp name="JSONPostProcessor.referenceNames">orderId;total</stringProp>
+          <stringProp name="JSONPostProcessor.jsonPathExprs">$.id;$.total</stringProp>
+        </JSONPostProcessor>
+        <hashTree/>
+        <RegexExtractor testname="Token legacy">
+          <stringProp name="RegexExtractor.refname">legacyToken</stringProp>
+          <stringProp name="RegexExtractor.regex">token=(\\w+)</stringProp>
+        </RegexExtractor>
+        <hashTree/>
+        <ResponseAssertion testname="Content-Type JSON">
+          <collectionProp name="Assertion.test_strings"><stringProp name="1">Content-Type: application/json</stringProp></collectionProp>
+          <stringProp name="Assertion.test_field">Assertion.response_headers</stringProp>
+          <intProp name="Assertion.test_type">2</intProp>
+        </ResponseAssertion>
+        <hashTree/>
+      </hashTree>
+    </hashTree>
+  </hashTree></jmeterTestPlan>`;
+  const { collection, warnings } = importJmeter(plan);
+  const request = collection.requests[0]!;
+  assert.deepEqual(
+    request.extractors.map((extractor) => [extractor.name, extractor.source, extractor.path]),
+    [["orderId", "json", "$.id"], ["total", "json", "$.total"]],
+  );
+  assert.deepEqual(
+    request.assertions.map((assertion) => [assertion.source, assertion.op, assertion.path, assertion.expected]),
+    [["header", "contains", "Content-Type", "application/json"]],
+  );
+  assert.ok(warnings.some((warning) => /12 hilos/.test(warning) && /loops 5/.test(warning) && /duración 120s/.test(warning)));
+  assert.ok(warnings.some((warning) => /RegexExtractor/.test(warning) && /legacyToken/.test(warning)));
 });
 
 test("xmlMini: entidades, CDATA, comentarios y errores con línea", () => {

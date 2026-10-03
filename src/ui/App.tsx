@@ -119,7 +119,7 @@ export function App() {
           <Mark />
           <div>
             <strong>Omnium</strong>
-            <small>cliente, prueba y carga</small>
+            <small>API Studio · prueba · carga</small>
           </div>
         </div>
         <div className="top-actions">
@@ -428,12 +428,16 @@ export function App() {
                   setModal(null);
                 }}
               >
-                Bruno .bru
+                Bruno proyecto
               </button>
               <button type="button" className="ghost" onClick={() => setModal(null)}>
                 Cerrar
               </button>
             </div>
+            <p className="banner">
+              Bruno se exporta como set Git-friendly: bruno.json y archivos .bru con rutas estables. El navegador descarga archivos sueltos;
+              conserva los nombres/rutas al moverlos a tu repositorio.
+            </p>
           </div>
         </div>
       ) : null}
@@ -618,7 +622,7 @@ function Help({ modifier, onClose }: { modifier: string; onClose: () => void }) 
           <li>{modifier}K abre el buscador. {modifier}↩ envía la petición. {modifier}S guarda ahora. Esc cierra esta ventana.</li>
           <li>Cancelar corta la petición o la prueba de la colección que esté en curso.</li>
           <li>Variables en capas: globales, ambiente, colección y las extraídas en la corrida.</li>
-          <li>Importa colecciones Postman v2.1 y genera fetch, Python o cURL.</li>
+          <li>Importa Postman, Insomnia, Bruno suelto, JMeter, Hoppscotch y Thunder; exporta Bruno como proyecto Git-friendly.</li>
           <li>Las cookies de la sesión se ven en Cookies y no se escriben en el área.</li>
           <li>La carga compara errores y p95 contra los límites que marques.</li>
         </ul>

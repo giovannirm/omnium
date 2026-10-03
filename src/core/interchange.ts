@@ -1,4 +1,4 @@
-import { exportBru, importBru } from "./bruno.ts";
+import { exportBruProject, importBru } from "./bruno.ts";
 import { exportInsomnia, importInsomnia } from "./insomnia.ts";
 import { importHoppscotch } from "./hoppscotch.ts";
 import { importJmeter } from "./jmeter.ts";
@@ -73,7 +73,7 @@ export type ExportFile = { name: string; content: string };
 
 /**
  * Devuelve los archivos a descargar para exportar `collection`.
- * Bruno genera un `.bru` por petición (un export por archivo, por diseño).
+ * Bruno genera un set Git-friendly con `bruno.json` y rutas `.bru` estables.
  */
 export function exportCollectionAs(format: ExportFormat, collection: Collection): ExportFile[] {
   if (format === "postman") {
@@ -92,10 +92,7 @@ export function exportCollectionAs(format: ExportFormat, collection: Collection)
       },
     ];
   }
-  return collection.requests.map((request) => ({
-    name: `${fileSlug(collection.name)}-${fileSlug(request.name)}.bru`,
-    content: exportBru(request),
-  }));
+  return exportBruProject(collection).map((file) => ({ name: file.path, content: file.content }));
 }
 
 /** Nombre de archivo seguro: sin acentos, sin separadores de ruta, en minúsculas. */

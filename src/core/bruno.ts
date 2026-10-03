@@ -1,10 +1,11 @@
 import { createRequest, isMethod, pair, uid } from "./factory.ts";
 import type { ImportResult } from "./interchange.ts";
 import { splitQuery } from "./postman.ts";
-import type { Assertion, Auth, Pair, RequestModel } from "./types.ts";
+import type { Assertion, Auth, Collection, Pair, RequestModel } from "./types.ts";
 
 type Block = { tag: string; body: string; line: number };
 type Entry = { key: string; value: string; enabled: boolean };
+export type BrunoProjectFile = { path: string; content: string };
 
 const METHODS = ["get", "post", "put", "patch", "delete", "head", "options"];
 const OP_WORDS = ["notEquals", "notEq", "notContains", "isDefined", "eq", "neq", "contains", "startsWith", "endsWith", "gt", "gte", "lt", "lte"];
@@ -69,6 +70,55 @@ export function importBru(text: string): ImportResult {
     throw new Error("El archivo no parece una petición Bruno (.bru)");
   }
   return { collection: { id: uid("col"), name, variables: [], requests: [request] }, warnings };
+}
+
+/** Exporta una colección Bruno Git-friendly: manifiesto estable + `.bru` por petición en carpetas. */
+export function exportBruProject(collection: Collection): BrunoProjectFile[] {
+  const root = filePart(collection.name || "Omnium");
+  const files: BrunoProjectFile[] = [
+    {
+      path: `${root}/bruno.json`,
+      content: `${JSON.stringify({ version: "1", name: collection.name || "Omnium", type: "collection" }, null, 2)}\n`,
+    },
+  ];
+  collection.requests.forEach((request, index) => {
+    const parts = requestPathParts(request.name, index + 1);
+    files.push({ path: `${root}/${parts.join("/")}.bru`, content: exportBru({ ...request, name: parts.at(-1) ?? request.name }) });
+  });
+  return files;
+}
+
+/** Importa un proyecto Bruno como set de archivos (`bruno.json` + `.bru`). */
+export function importBruProject(files: BrunoProjectFile[]): ImportResult {
+  const manifest = files.find((file) => /(^|\/)bruno\.json$/i.test(file.path));
+  const warnings: string[] = [];
+  let name = "Bruno";
+  let root = "";
+  if (manifest) {
+    root = manifest.path.replace(/(^|\/)bruno\.json$/i, "").replace(/\/$/, "");
+    try {
+      const parsed = JSON.parse(manifest.content) as { name?: unknown; version?: unknown };
+      if (typeof parsed.name === "string" && parsed.name.trim()) name = parsed.name.trim();
+      if (parsed.version !== "1" && parsed.version !== 1) {
+        warnings.push(`bruno.json usa versión "${String(parsed.version ?? "desconocida")}"; se importó con compatibilidad parcial`);
+      }
+    } catch {
+      warnings.push("bruno.json no es JSON válido; se usó el nombre por defecto");
+    }
+  } else {
+    warnings.push("No se encontró bruno.json; se importaron los .bru disponibles como proyecto parcial");
+  }
+
+  const requests: RequestModel[] = [];
+  for (const file of files.filter((item) => item.path.toLowerCase().endsWith(".bru")).sort((a, b) => a.path.localeCompare(b.path))) {
+    const imported = importBru(file.content);
+    warnings.push(...imported.warnings.map((warning) => `${file.path}: ${warning}`));
+    const request = imported.collection.requests[0];
+    if (!request) continue;
+    requests.push({ ...request, name: nameFromProjectPath(file.path, request.name, root) });
+  }
+  if (requests.length === 0) throw new Error("El proyecto Bruno no tiene peticiones .bru");
+  return { collection: { id: uid("col"), name, variables: [], requests }, warnings };
 }
 
 export function exportBru(request: RequestModel): string {
@@ -435,4 +485,32 @@ function assertBlock(assertions: Assertion[]): string | null {
 function looksJson(value: string): boolean {
   const trimmed = value.trim();
   return trimmed.startsWith("{") || trimmed.startsWith("[");
+}
+
+function requestPathParts(name: string, seq: number): string[] {
+  const raw = name.split("/").map((part) => part.trim()).filter(Boolean);
+  const parts = raw.length ? raw : [name || `Petición ${seq}`];
+  const safe = parts.map(filePart);
+  const last = safe.at(-1) || `peticion-${seq}`;
+  return [...safe.slice(0, -1), `${String(seq).padStart(2, "0")}-${last}`];
+}
+
+function nameFromProjectPath(path: string, fallback: string, root: string): string {
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  const rootParts = root ? root.replace(/\\/g, "/").split("/").filter(Boolean) : [];
+  const withoutRoot = rootParts.every((part, index) => parts[index] === part) ? parts.slice(rootParts.length) : parts;
+  const bru = withoutRoot.filter((part) => part !== "bruno.json");
+  if (bru.length === 0) return fallback;
+  const last = bru.at(-1)?.replace(/\.bru$/i, "").replace(/^\d+-/, "") ?? fallback;
+  return [...bru.slice(0, -1), last].join(" / ") || fallback;
+}
+
+function filePart(name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return slug || "item";
 }

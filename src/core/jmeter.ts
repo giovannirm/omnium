@@ -1,10 +1,10 @@
 import { createRequest, isMethod, pair, uid } from "./factory.ts";
 import type { ImportResult } from "./interchange.ts";
 import { splitQuery } from "./postman.ts";
-import type { Assertion, Pair, RequestModel } from "./types.ts";
+import type { Assertion, Extractor, Pair, RequestModel } from "./types.ts";
 import { parseXml, type XmlNode } from "./xmlMini.ts";
 
-type Scope = { headers: Pair[]; assertions: Assertion[] };
+type Scope = { headers: Pair[]; assertions: Assertion[]; extractors: Extractor[] };
 type Sink = { name: string; variables: Pair[]; warnings: string[]; planVars: Pair[]; maxThreads: number };
 
 /**
@@ -20,10 +20,7 @@ export function importJmeter(text: string): ImportResult {
   const sink: Sink = { name: "", variables: [], warnings: [], planVars: [], maxThreads: 1 };
   const requests: RequestModel[] = [];
   const tree = root.children.find((child) => child.tag === "hashTree");
-  walk(tree?.children ?? [], { headers: [], assertions: [] }, requests, sink);
-  if (sink.maxThreads > 1) {
-    sink.warnings.push(`Plan de carga JMeter (${sink.maxThreads} hilos) no se importa; solo las peticiones`);
-  }
+  walk(tree?.children ?? [], { headers: [], assertions: [], extractors: [] }, requests, sink);
   if (requests.length === 0) throw new Error("El plan JMeter no tiene peticiones HTTP");
   const collection = {
     id: uid("col"),
@@ -36,16 +33,14 @@ export function importJmeter(text: string): ImportResult {
 
 /** Recorre una lista de nodos emparejando cada elemento con su `hashTree` hijo. */
 function walk(nodes: XmlNode[], scope: Scope, out: RequestModel[], sink: Sink): void {
-  const local: Scope = { headers: [...scope.headers], assertions: [...scope.assertions] };
+  const local: Scope = { headers: [...scope.headers], assertions: [...scope.assertions], extractors: [...scope.extractors] };
   // 1ª pasada: config elements del nivel (aplican a todo el scope).
   forEachPair(nodes, (element) => {
     if (element.tag === "HeaderManager") local.headers.push(...readHeaders(element));
     else if (element.tag === "ResponseAssertion") local.assertions.push(...readAssertions(element, sink.warnings));
     else if (element.tag === "CSVDataSet") readCsv(element, sink);
-    else if (element.tag === "ThreadGroup") {
-      const threads = Number(prop(element, "ThreadGroup.num_threads") ?? "1");
-      if (Number.isFinite(threads)) sink.maxThreads = Math.max(sink.maxThreads, threads);
-    }
+    else if (element.tag === "JSONPostProcessor" || element.tag === "RegexExtractor") local.extractors.push(...readExtractors(element, sink.warnings));
+    else if (element.tag === "ThreadGroup") readThreadGroup(element, sink);
   });
   // 2ª pasada: samplers y anidamiento.
   forEachPair(nodes, (element, tree) => {
@@ -59,7 +54,14 @@ function walk(nodes: XmlNode[], scope: Scope, out: RequestModel[], sink: Sink): 
       walk(tree, local, out, sink);
       return;
     }
-    if (element.tag === "hashTree" || element.tag === "HeaderManager" || element.tag === "ResponseAssertion" || element.tag === "CSVDataSet") return;
+    if (
+      element.tag === "hashTree" ||
+      element.tag === "HeaderManager" ||
+      element.tag === "ResponseAssertion" ||
+      element.tag === "CSVDataSet" ||
+      element.tag === "JSONPostProcessor" ||
+      element.tag === "RegexExtractor"
+    ) return;
     walk(tree, local, out, sink);
   });
 }
@@ -93,10 +95,11 @@ function readSampler(element: XmlNode, tree: XmlNode[], scope: Scope, warnings: 
   }
 
   // Config elements dentro del sampler (scope propio) + scope heredado.
-  const own: Scope = { headers: [], assertions: [] };
+  const own: Scope = { headers: [], assertions: [], extractors: [] };
   forEachPair(tree, (child) => {
     if (child.tag === "HeaderManager") own.headers.push(...readHeaders(child));
     else if (child.tag === "ResponseAssertion") own.assertions.push(...readAssertions(child, warnings));
+    else if (child.tag === "JSONPostProcessor" || child.tag === "RegexExtractor") own.extractors.push(...readExtractors(child, warnings));
   });
 
   const redirect = prop(element, "HTTPSampler.follow_redirects");
@@ -110,6 +113,7 @@ function readSampler(element: XmlNode, tree: XmlNode[], scope: Scope, warnings: 
     bodyRaw,
     form,
     assertions: [...scope.assertions, ...own.assertions],
+    extractors: [...scope.extractors, ...own.extractors],
     ...(redirect !== undefined ? { followRedirects: redirect === "true" } : {}),
   });
 }
@@ -138,7 +142,7 @@ function readHeaders(element: XmlNode): Pair[] {
   return out;
 }
 
-/** ResponseAssertion dirigido: código = status eq, datos = body contains. */
+/** ResponseAssertion dirigido: código/status, body, headers con nombre y JSON cuando el destino lo permite. */
 function readAssertions(element: XmlNode, warnings: string[]): Assertion[] {
   const field = prop(element, "Assertion.test_field") ?? "";
   const type = Number(prop(element, "Assertion.test_type") ?? "0");
@@ -155,13 +159,54 @@ function readAssertions(element: XmlNode, warnings: string[]): Assertion[] {
       out.push({ id: uid("assert"), source: "status", op: negated ? "neq" : "eq", path: "", expected });
       continue;
     }
-    if (field === "Assertion.response_data" && containsLike && !negated) {
+    if ((field === "Assertion.response_data" || field === "Assertion.response_data_as_document") && containsLike && !negated) {
       out.push({ id: uid("assert"), source: "body", op: "contains", path: "", expected });
       continue;
+    }
+    if (field === "Assertion.response_headers" && containsLike && !negated) {
+      const split = /^([^:]+):\s*(.+)$/.exec(expected);
+      if (split) {
+        out.push({ id: uid("assert"), source: "header", op: "contains", path: split[1].trim(), expected: split[2].trim() });
+        continue;
+      }
     }
     warnings.push(`Aserción JMeter "${testname}" (${field}, tipo ${type}) no soportada; se omitió`);
   }
   return out;
+}
+
+function readExtractors(element: XmlNode, warnings: string[]): Extractor[] {
+  const testname = element.attrs.testname ?? element.tag;
+  if (element.tag === "JSONPostProcessor") {
+    const names = splitList(prop(element, "JSONPostProcessor.referenceNames") ?? "");
+    const paths = splitList(prop(element, "JSONPostProcessor.jsonPathExprs") ?? "");
+    const out: Extractor[] = [];
+    names.forEach((name, index) => {
+      const path = paths[index] ?? paths[0] ?? "";
+      if (!name || !path) return;
+      out.push({ id: uid("ext"), name, source: "json", path });
+    });
+    if (out.length === 0) warnings.push(`Extractor JSON JMeter "${testname}" sin variable o JSONPath; se omitió`);
+    return out;
+  }
+  const variable = prop(element, "RegexExtractor.refname") ?? "";
+  const regex = prop(element, "RegexExtractor.regex") ?? "";
+  warnings.push(`RegexExtractor JMeter "${testname}"${variable ? ` → ${variable}` : ""} no se puede mapear a extractores nativos JSON/header; regex: ${regex || "(vacía)"}`);
+  return [];
+}
+
+function readThreadGroup(element: XmlNode, sink: Sink): void {
+  const name = element.attrs.testname ?? "ThreadGroup";
+  const threads = Number(prop(element, "ThreadGroup.num_threads") ?? "1");
+  if (Number.isFinite(threads)) sink.maxThreads = Math.max(sink.maxThreads, threads);
+  const ramp = prop(element, "ThreadGroup.ramp_time") ?? "0";
+  const duration = prop(element, "ThreadGroup.duration") ?? prop(element, "duration") ?? "";
+  const loops = prop(findElement(element, "ThreadGroup.main_controller") ?? element, "LoopController.loops") ?? "";
+  const scheduler = prop(element, "ThreadGroup.scheduler") === "true";
+  const parts = [`${Number.isFinite(threads) ? threads : 1} hilos`, `ramp-up ${ramp || "0"}s`];
+  if (loops) parts.push(`loops ${loops}`);
+  if (scheduler && duration) parts.push(`duración ${duration}s`);
+  sink.warnings.push(`ThreadGroup "${name}" preservado como metadata de importación (${parts.join(", ")}); Omnium no ejecuta el plan JMeter completo`);
 }
 
 function readCsv(element: XmlNode, sink: Sink): void {
@@ -175,7 +220,11 @@ function readCsv(element: XmlNode, sink: Sink): void {
     return;
   }
   for (const name of names) sink.variables.push(pair(name, ""));
-  sink.warnings.push(`Variables del CSV ${filename || "(sin nombre)"} importadas vacías; complétalas en la colección`);
+  sink.warnings.push(`CSVDataSet "${filename || "(sin nombre)"}": columnas ${names.join(", ")} importadas como variables vacías; Omnium no lee el CSV en runtime`);
+}
+
+function splitList(value: string): string[] {
+  return value.split(/[;,]/).map((item) => item.trim()).filter(Boolean);
 }
 
 function readSamplerArgs(element: XmlNode): Pair[] {
