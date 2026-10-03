@@ -284,6 +284,7 @@ export function useAppState(options: { client: Client }) {
     openArea: ws.openArea,
     createArea: ws.createArea,
     exportArea: ws.exportArea,
+    exportCollection: ws.exportCollection,
     // selección
     selection,
     setSelection,

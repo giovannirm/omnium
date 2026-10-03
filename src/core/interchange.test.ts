@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { detectFormat, importCollection } from "./interchange.ts";
+import { detectFormat, exportCollectionAs, fileSlug, importCollection } from "./interchange.ts";
 
 const POSTMAN = JSON.stringify({
   info: { name: "Mi colección", schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
@@ -125,4 +125,39 @@ test("detecta Insomnia v5 JSON por el discriminador type", () => {
 
 test("importCollection avisa si el JSON está roto", () => {
   assert.throws(() => importCollection("{esto no es json", "x.json"), /No se reconoce|JSON válido/);
+});
+
+test("exportCollectionAs genera Postman e Insomnia como JSON con nombre seguro", () => {
+  const { collection } = importCollection(POSTMAN, "c.json");
+
+  const postman = exportCollectionAs("postman", collection);
+  assert.equal(postman.length, 1);
+  assert.match(postman[0].name, /^mi-coleccion\.postman\.json$/);
+  const back = JSON.parse(postman[0].content) as { info: { name: string } };
+  assert.equal(back.info.name, "Mi colección");
+
+  const insomnia = exportCollectionAs("insomnia", collection);
+  assert.equal(insomnia.length, 1);
+  assert.match(insomnia[0].name, /^mi-coleccion\.insomnia\.json$/);
+  assert.equal((JSON.parse(insomnia[0].content) as { __export_format: number }).__export_format, 4);
+});
+
+test("exportCollectionAs en Bruno devuelve un .bru por petición", () => {
+  const text = JSON.stringify({
+    info: { name: "Dos peticiones", schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json" },
+    item: [
+      { name: "Ping", request: { method: "GET", url: "https://api.test/health" } },
+      { name: "Echo", request: { method: "POST", url: { raw: "https://api.test/echo" } } },
+    ],
+  });
+  const { collection } = importCollection(text, "c.json");
+  const bru = exportCollectionAs("bruno", collection);
+  assert.equal(bru.length, 2);
+  assert.match(bru[0].name, /\.bru$/);
+  assert.match(bru[0].content, /^meta \{/);
+});
+
+test("fileSlug limpia acentos, separadores y queda en minúsculas", () => {
+  assert.equal(fileSlug("Café de la Ñ / especial!"), "cafe-de-la-n-especial");
+  assert.equal(fileSlug("  "), "coleccion");
 });

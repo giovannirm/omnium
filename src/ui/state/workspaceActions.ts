@@ -1,7 +1,7 @@
 import { useRef, type Dispatch, type SetStateAction } from "react";
 import type { Client } from "../../client.ts";
 import { parseWorkspace } from "../../core/files.ts";
-import { importPostman } from "../../core/postman.ts";
+import { detectFormat, exportCollectionAs, importCollection, type ExportFormat } from "../../core/interchange.ts";
 import { hasSecrets, maskWorkspace } from "../../core/secrets.ts";
 import type { ExecutionResult, Workspace } from "../../core/types.ts";
 import type { SessionReport } from "./executionActions.ts";
@@ -51,7 +51,7 @@ export function createWorkspaceActions(deps: {
   const workspaceRef = useRef<Workspace | null>(null);
   workspaceRef.current = workspace;
   const importRef = useRef<HTMLInputElement>(null);
-  const importKind = useRef<"area" | "postman">("area");
+  const importKind = useRef<"area" | "collection">("area");
 
   function saveNow(): void {
     const current = workspaceRef.current;
@@ -177,13 +177,37 @@ export function createWorkspaceActions(deps: {
     deps.setWorkspace(updateEnvironmentIn(workspace, environment));
   }
 
-  // --- importación ---
+  // --- importación y exportación ---
+
+  /** Descarga un texto como archivo (mismo patrón que `client.exportFile`). */
+  function downloadText(name: string, content: string, type: string): void {
+    const blob = new Blob([content], { type });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  /** Adopta el área leída del archivo (reemplazo con confirmación). */
+  function adoptAreaText(text: string): void {
+    const parsed = parseWorkspace(JSON.parse(text));
+    if (!window.confirm("Esto reemplaza colecciones, ambientes e historial de esta área.")) return;
+    adopt(parsed, dir, true);
+    notify("Área importada");
+  }
 
   async function importArea(file: File): Promise<void> {
     try {
-      const raw = JSON.parse(await file.text()) as unknown;
-      if (importKind.current === "postman") {
-        const { collection, warnings } = importPostman(raw);
+      const text = await file.text();
+      if (importKind.current === "collection") {
+        // Auto-detección: un área de Omnium elegida como colección no se
+        // duplica; se adopta como área (misma ruta que "Importar").
+        if (detectFormat(text, file.name) === "omnium-area") {
+          adoptAreaText(text);
+          return;
+        }
+        const { collection, warnings } = importCollection(text, file.name);
         deps.setWorkspace((current) => (current ? appendCollectionRaw(current, collection) : current));
         const request = collection.requests[0];
         if (request) choose({ kind: "request", collectionId: collection.id, requestId: request.id });
@@ -194,18 +218,34 @@ export function createWorkspaceActions(deps: {
         );
         return;
       }
-      const parsed = parseWorkspace(raw);
-      if (!window.confirm("Esto reemplaza colecciones, ambientes e historial de esta área.")) return;
-      adopt(parsed, dir, true);
-      notify("Área importada");
+      adoptAreaText(text);
     } catch (error) {
       notify(error instanceof SyntaxError ? "El archivo no es JSON" : error instanceof Error ? error.message : "No se pudo importar");
     }
   }
 
-  function beginImport(kind: "area" | "postman"): void {
+  function beginImport(kind: "area" | "collection"): void {
     importKind.current = kind;
     importRef.current?.click();
+  }
+
+  /** Exporta la colección seleccionada (o la de la petición activa) en `format`. */
+  function exportCollection(format: ExportFormat): void {
+    const sel = deps.selection;
+    const collectionId = sel && (sel.kind === "collection" || sel.kind === "request") ? sel.collectionId : null;
+    const collection = workspaceRef.current?.collections.find((item) => item.id === collectionId);
+    if (!collection) {
+      notify("Elige una colección para exportar");
+      return;
+    }
+    const files = exportCollectionAs(format, collection);
+    if (files.length === 0) {
+      notify("La colección no tiene peticiones");
+      return;
+    }
+    const mime = format === "bruno" ? "text/plain" : "application/json";
+    for (const file of files) downloadText(file.name, file.content, mime);
+    notify(files.length === 1 ? `Exportada ${collection.name}` : `${files.length} archivos exportados`);
   }
 
   return {
@@ -231,5 +271,6 @@ export function createWorkspaceActions(deps: {
     updateEnvironment,
     importArea,
     beginImport,
+    exportCollection,
   };
 }

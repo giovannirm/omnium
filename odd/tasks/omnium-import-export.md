@@ -147,12 +147,21 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
   - [x] Tests por formato (3 c/u) + tests de detección en interchange
   - [x] Límites: GraphQL no se importa (URL sola + aviso); timeout Thunder
         ignorado (unidad sin confirmar); environments .env fuera de alcance
-- [ ] **T7 — UI: importar/exportar**
-  - [ ] Comando único "Importar colección…" (auto-detección + selector de formato + avisos);
-        reemplaza el kind fijo `postman` de `beginImport`
-  - [ ] Comando "Exportar colección…" → Postman JSON / Insomnia v4 / Bruno `.bru`
-        (descarga por formato)
-  - [ ] Tests de estado donde aplique; verificación visual documentada como pendiente
+- [x] **T7 — UI: importar/exportar**
+  - [x] Comando único "Importar colección…" (auto-detección + avisos en el toast);
+        reemplaza el kind fijo `postman` de `beginImport`; botón "Colección" en
+        la barra; `accept` ampliado a `.json/.yaml/.yml/.jmx/.bru`;
+        si el archivo es un área Omnium elegida como colección se adopta como
+        área (no se duplica)
+  - [x] Modal "Exportar colección…" (comando en la paleta + botones) →
+        Postman JSON / Insomnia v4 / Bruno `.bru`; usa la colección de la
+        selección (colección o petición activa); descarga con nombre seguro
+        (`fileSlug`); Bruno descarga un `.bru` por petición
+  - [x] Tests de `exportCollectionAs`/`fileSlug` en interchange.test.ts;
+        verificación visual en navegador documentada como **pendiente**
+  - [x] Desviación consciente: no hubo "selector de formato" en import; la
+        auto-detección por contenido cubre los 6 formatos y el caso "unknown"
+        ya nombra el motivo en el toast (un selector manual no añadía nada)
 - [ ] **T8 — CLI con auto-detección**
   - [ ] `loadTarget` usa `importCollection` (cualquier formato directo en `omnium run archivo`)
 - [ ] **T9 — Cierre**: smokes por formato, greps, docs (Progreso + tabla de slices), commits
@@ -188,3 +197,5 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 - [x] T5 ✅ (127/127 tests, tsc + build verdes) → T6
 - [x] T6 ✅ (136/136 tests, tsc + build verdes) → T7 — los 6 importadores
       quedaron cableados en el dispatcher (sin formatos "no soportados")
+- [x] T7 ✅ (139/139 tests, tsc + build verdes) → T8 — import/export con
+      auto-detección y modal de export en UI; smoke visual en navegador pendiente

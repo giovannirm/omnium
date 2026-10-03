@@ -3,7 +3,7 @@ import type { Workspace } from "../../core/types.ts";
 import type { Command } from "../palette.tsx";
 import type { Selection } from "./model.ts";
 
-export type Modal = null | "help" | "curl" | "palette" | "snippet" | "cookies";
+export type Modal = null | "help" | "curl" | "palette" | "snippet" | "cookies" | "export";
 
 export type ChromeActions = ReturnType<typeof createChromeActions>;
 
@@ -20,7 +20,7 @@ export function createChromeActions(deps: {
   setModal: Dispatch<SetStateAction<Modal>>;
   choose: (selection: Selection) => void;
   send: (asTest?: boolean) => Promise<void>;
-  beginImport: (kind: "area" | "postman") => void;
+  beginImport: (kind: "area" | "collection") => void;
   refreshCookies: () => Promise<void>;
 }) {
   const { workspace, commandKey, sideW, outW, setSideW, setOutW, setPane, setModal, choose, send, beginImport, refreshCookies } = deps;
@@ -49,7 +49,8 @@ export function createChromeActions(deps: {
       { id: "test", label: "Probar afirmaciones", hint: "Petición actual", run: () => void send(true) },
       { id: "load", label: "Abrir carga", hint: "Usuarios y percentiles", run: () => setPane("load") },
       { id: "code", label: "Generar código", hint: "fetch y Python", run: () => setModal("snippet") },
-      { id: "postman", label: "Importar colección Postman", hint: "v2.1", run: () => beginImport("postman") },
+      { id: "import", label: "Importar colección…", hint: "Auto-detección", run: () => beginImport("collection") },
+      { id: "export", label: "Exportar colección…", hint: "Postman / Insomnia / Bruno", run: () => setModal("export") },
       { id: "globals", label: "Variables globales", hint: "Toda el área", run: () => choose({ kind: "globals" }) },
       { id: "cookies", label: "Ver cookies", hint: "Sesión local", run: () => { setModal("cookies"); void refreshCookies(); } },
       { id: "help", label: "Ayuda", hint: "Atajos y ejemplo", run: () => setModal("help") },
