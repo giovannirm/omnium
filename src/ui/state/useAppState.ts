@@ -3,6 +3,7 @@ import type { Client } from "../../client.ts";
 import type { CookieView } from "../../core/cookies.ts";
 import { parseWorkspace } from "../../core/files.ts";
 import { importPostman } from "../../core/postman.ts";
+import { externalHooks } from "../../core/script.ts";
 import type {
   ExecutionResult,
   LoadPlan,
@@ -10,6 +11,7 @@ import type {
   Workspace,
 } from "../../core/types.ts";
 import { resolveVariables } from "../../core/variables.ts";
+import { hasSecrets, maskWorkspace } from "../../core/secrets.ts";
 import type { Command } from "../palette.tsx";
 import {
   activeEnvironment,
@@ -17,6 +19,7 @@ import {
   appendCollectionRaw,
   appendEnvironment,
   appendRequest,
+  applyEnvironmentChanges,
   closeTabAt,
   defaultSelection,
   diffVars,
@@ -230,8 +233,9 @@ export function useAppState(options: { client: Client }) {
 
   async function exportArea(): Promise<void> {
     if (!workspace) return;
-    const done = await client.exportFile(workspace);
-    if (done) notify("Área exportada");
+    const secrets = hasSecrets(workspace);
+    const done = await client.exportFile(maskWorkspace(workspace));
+    if (done) notify(secrets ? "Área exportada · secretos enmascarados" : "Área exportada");
   }
 
   // --- selección y pestañas ---
@@ -326,10 +330,18 @@ export function useAppState(options: { client: Client }) {
     setPending(true);
     setPane(asTest ? "tests" : "response");
     try {
-      const result = await client.execute({ request: selected.request, variables });
+      const environment = activeEnvironment(workspace);
+      const result = await client.execute({
+        request: selected.request,
+        variables,
+        ...externalHooks(selected.collection, environment),
+        environment: environment?.variables,
+        moduleDir: dir,
+      });
       setResults((current) => ({ ...current, [selected.request.id]: result }));
       setRuntime((current) => ({ ...current, ...result.extracted }));
       remember(selected.request, result);
+      applyEnv(environment?.id, result.environmentChanged);
       if (result.error) notify(result.error);
       void refreshCookies();
     } catch (error) {
@@ -342,6 +354,12 @@ export function useAppState(options: { client: Client }) {
     }
   }
 
+  /** Los scripts que escribieron en el ambiente lo devuelven como diff. */
+  function applyEnv(environmentId: string | undefined, changes: Record<string, string> | undefined): void {
+    if (!environmentId || !changes || Object.keys(changes).length === 0) return;
+    setWorkspace((current) => (current ? applyEnvironmentChanges(current, environmentId, changes) : current));
+  }
+
   async function testCollection(collectionId: string): Promise<void> {
     if (!workspace || busy.current) return;
     const collection = workspace.collections.find((item) => item.id === collectionId);
@@ -350,16 +368,24 @@ export function useAppState(options: { client: Client }) {
     setPending(true);
     setPane("tests");
     try {
-      const runVars = resolveVariables(activeEnvironment(workspace), runtime, {
+      const environment = activeEnvironment(workspace);
+      const runVars = resolveVariables(environment, runtime, {
         globals: workspace.globals,
         collection: collection.variables,
       });
-      const next = await client.run({ requests: collection.requests, variables: runVars });
+      const next = await client.run({
+        requests: collection.requests,
+        variables: runVars,
+        ...externalHooks(collection, environment),
+        environment: environment?.variables,
+        moduleDir: dir,
+      });
       const fresh: Record<string, ExecutionResult> = {};
       for (const step of next.steps) fresh[step.requestId] = step.result;
       setResults((current) => ({ ...current, ...fresh }));
       setReport({ collectionId, report: next });
       setRuntime((current) => ({ ...current, ...diffVars(runVars, next.variables) }));
+      applyEnv(environment?.id, next.environmentChanged);
       const cancelled = next.steps.some((step) => step.result.error === "Petición cancelada");
       notify(cancelled ? "Prueba cancelada" : next.failed ? `${next.failed} peticiones fallaron` : `${next.passed} peticiones bien`);
       void refreshCookies();

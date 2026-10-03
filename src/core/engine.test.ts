@@ -208,3 +208,65 @@ test("stopLoad corta una carga y devuelve stopped", async () => {
   assert.ok(snap.sent > 0);
   assert.equal(snap.failed, 0);
 });
+
+test("los hooks pre/post orquestan scripts, ambiente y logs", async () => {
+  const request = { ...sampleWorkspace().collections[0]!.requests[0]! };
+  const result = await executeRequest({
+    request,
+    variables: { baseUrl: `http://127.0.0.1:${demo.port}` },
+    scripts: {
+      pre: [{ label: "ambiente", code: 'omnium.env.set("marca", "hoy");' }],
+      post: [
+        {
+          label: "colección",
+          code: 'omnium.log("llego " + omnium.response.status); omnium.test("ambiente en post", () => omnium.expect(omnium.env.get("marca")).toBe("hoy"));',
+        },
+      ],
+      environment: { keep: "1" },
+    },
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.environmentChanged, { marca: "hoy" });
+  assert.deepEqual(result.logs, ["colección: llego 200"]);
+  const scriptTests = result.assertions.filter((item) => item.id.startsWith("script:"));
+  assert.equal(scriptTests.length, 1);
+  assert.equal(scriptTests[0]!.passed, true);
+  assert.equal(result.assertions.filter((item) => !item.passed).length, 0);
+});
+
+test("el pre de la petición corre después de los hooks y completa variables", async () => {
+  const request = { ...sampleWorkspace().collections[0]!.requests[0]!, preScript: 'omnium.variables.set("ruta", "health");' };
+  const result = await executeRequest({
+    request: { ...request, url: "{{baseUrl}}/{{ruta}}" },
+    variables: { baseUrl: `http://127.0.0.1:${demo.port}` },
+    scripts: { pre: [{ label: "ambiente", code: 'omnium.log("arranca");' }] },
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.logs, ["ambiente: arranca"]);
+  assert.equal(result.extracted.ruta, "health");
+});
+
+test("un pre que falla aborta el paso antes de tocar la red", async () => {
+  const result = await executeRequest({
+    request: { ...sampleWorkspace().collections[0]!.requests[0]!, url: "http://127.0.0.1:1/no" },
+    variables: {},
+    scripts: { pre: [{ label: "ambiente", code: 'throw new Error("exploto");' }] },
+  });
+  assert.equal(result.status, null);
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? "", /ambiente: exploto/);
+});
+
+test("los cambios de ambiente se acumulan en toda la corrida", async () => {
+  const report = await runCollection({
+    requests: sampleWorkspace().collections[0]!.requests.slice(0, 1),
+    variables: { baseUrl: `http://127.0.0.1:${demo.port}` },
+    scripts: {
+      environment: { base: "antes" },
+      post: [{ label: "ambiente", code: 'omnium.env.set("base", "despues");' }],
+    },
+  });
+  assert.equal(report.failed, 0);
+  assert.deepEqual(report.environmentChanged, { base: "despues" });
+});

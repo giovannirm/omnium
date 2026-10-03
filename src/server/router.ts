@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { EngineRuntime } from "../core/engine.ts";
 import type { ExecutePayload, LoadPayload, RunPayload } from "../core/types.ts";
+import { createModuleLoader } from "../host/moduleLoader.ts";
 
 export const ENGINE_PREFIX = "/__omnium";
 
@@ -47,14 +48,14 @@ async function route(
   }
   if (url === `${ENGINE_PREFIX}/execute` && req.method === "POST") {
     const signal = tieAbort(res);
-    const payload = (await readJson(req)) as ExecutePayload;
+    const payload = withModules((await readJson(req)) as ExecutePayload);
     if (signal.aborted || res.writableEnded) return;
     json(res, 200, await runtime.execute(payload, signal));
     return;
   }
   if (url === `${ENGINE_PREFIX}/run` && req.method === "POST") {
     const signal = tieAbort(res);
-    const payload = (await readJson(req)) as RunPayload;
+    const payload = withModules((await readJson(req)) as RunPayload);
     if (signal.aborted || res.writableEnded) return;
     json(res, 200, await runtime.run(payload, signal));
     return;
@@ -97,6 +98,13 @@ function message(error: unknown): string {
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(body));
+}
+
+/** JSON viaja sin funciones: el host adjunta el loader de `omnium.require`
+ * según el directorio del área que el cliente declaró (servidor local). */
+function withModules<T extends ExecutePayload | RunPayload>(payload: T): T {
+  if (!payload || payload.requireModule) return payload;
+  return { ...payload, requireModule: createModuleLoader(payload.moduleDir) };
 }
 
 function readJson(req: IncomingMessage): Promise<unknown> {

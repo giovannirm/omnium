@@ -35,6 +35,8 @@ export function createRequest(partial: Partial<RequestModel> = {}): RequestModel
     extractors: partial.extractors ?? [],
     timeoutMs: partial.timeoutMs ?? 30000,
     followRedirects: partial.followRedirects ?? true,
+    ...(partial.preScript ? { preScript: partial.preScript } : {}),
+    ...(partial.postScript ? { postScript: partial.postScript } : {}),
   };
 }
 

@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { useRef } from "react";
 import type { Pair } from "../core/types.ts";
 import { pair } from "../core/factory.ts";
 
@@ -43,8 +45,15 @@ export function PairTable({
             value={row.value}
             placeholder={valuePlaceholder}
             spellCheck={false}
-            type={secret(row.key) ? "password" : "text"}
+            type={row.secret || looksSecret(row.key) ? "password" : "text"}
             onChange={(event) => update(row.id, { value: event.target.value })}
+          />
+          <input
+            type="checkbox"
+            checked={row.secret === true}
+            aria-label="Valor secreto"
+            title="Oculta el valor en pantalla y lo exporta enmascarado"
+            onChange={(event) => update(row.id, { secret: event.target.checked })}
           />
           <button type="button" className="icon" aria-label="Quitar" onClick={() => onChange(rows.filter((item) => item.id !== row.id))}>
             ×
@@ -147,7 +156,8 @@ export function formatMs(value: number): string {
   return `${Math.round(value)} ms`;
 }
 
-function secret(key: string): boolean {
+/** Sugerencia: algunos nombres ya delatan una clave sin marcar a mano. */
+function looksSecret(key: string): boolean {
   return /pass|token|secret|authorization/i.test(key);
 }
 
@@ -160,4 +170,72 @@ export function formatWhen(iso: string, now = Date.now()): string {
   if (delta < 3_600_000) return `hace ${Math.max(1, Math.round(delta / 60_000))} min`;
   if (delta < 86_400_000) return `hace ${Math.round(delta / 3_600_000)} h`;
   return new Date(time).toLocaleString("es");
+}
+
+const SCRIPT_TOKEN =
+  /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(\d+(?:\.\d+)?)\b|\b(await|async|const|let|var|function|return|if|else|for|of|in|new|throw|try|catch|finally|true|false|null|undefined|typeof|instanceof)\b|\b(omnium)\b/g;
+
+/** Tokenizador propio: comentarios, cadenas, números, palabras clave y la API. */
+function highlight(code: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let key = 0;
+  for (const match of code.matchAll(SCRIPT_TOKEN)) {
+    const start = match.index ?? 0;
+    if (start > cursor) nodes.push(code.slice(cursor, start));
+    const className = match[1] ? "tok-com" : match[2] ? "tok-str" : match[3] ? "tok-num" : match[4] ? "tok-kw" : "tok-api";
+    nodes.push(
+      <span key={key++} className={className}>
+        {match[0]}
+      </span>,
+    );
+    cursor = start + match[0].length;
+  }
+  if (cursor < code.length) nodes.push(code.slice(cursor));
+  return nodes;
+}
+
+/**
+ * Editor de scripts con resaltado propio: un `textarea` transparente encima de
+ * un `pre` con el mismo texto tokenizado. Sin dependencias y sin ejecutar nada
+ * mientras se escribe.
+ */
+export function ScriptEditor({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const preRef = useRef<HTMLPreElement>(null);
+  return (
+    <div className="script-block">
+      <div className="script-label">
+        <span>{label}</span>
+        {hint ? <span className="hint">{hint}</span> : null}
+      </div>
+      <div className="script-box">
+        <pre className="script-code" aria-hidden="true" ref={preRef}>
+          {highlight(value)}
+        </pre>
+        <textarea
+          className="script-input"
+          aria-label={label}
+          value={value}
+          spellCheck={false}
+          placeholder="// omnium.log, omnium.test, omnium.variables…"
+          onChange={(event) => onChange(event.target.value)}
+          onScroll={(event) => {
+            if (!preRef.current) return;
+            preRef.current.scrollTop = event.currentTarget.scrollTop;
+            preRef.current.scrollLeft = event.currentTarget.scrollLeft;
+          }}
+        />
+      </div>
+    </div>
+  );
 }

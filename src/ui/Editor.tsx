@@ -4,7 +4,7 @@ import type { Assertion, Environment, RequestModel } from "../core/types.ts";
 import { OP_LABEL, OPS_FOR } from "../core/assertions.ts";
 import { assertion, blankAuth, uid } from "../core/factory.ts";
 import { collectPlaceholders } from "../core/variables.ts";
-import { PairTable } from "./widgets.tsx";
+import { PairTable, ScriptEditor } from "./widgets.tsx";
 
 const TABS = [
   ["params", "Parámetros"],
@@ -12,6 +12,7 @@ const TABS = [
   ["body", "Cuerpo"],
   ["auth", "Auth"],
   ["tests", "Pruebas"],
+  ["scripts", "Scripts"],
 ] as const;
 
 type Tab = (typeof TABS)[number][0];
@@ -170,6 +171,22 @@ export function Editor({
         {tab === "body" ? <BodyEditor request={request} onChange={onChange} onNotice={onNotice} /> : null}
         {tab === "auth" ? <AuthEditor request={request} onChange={onChange} /> : null}
         {tab === "tests" ? <TestsEditor request={request} onChange={onChange} /> : null}
+        {tab === "scripts" ? (
+          <div className="scripts-panel">
+            <ScriptEditor
+              label="Pre (antes de enviar)"
+              hint="Prepara variables, cabeceras o el cuerpo: omnium.variables.set, omnium.request…"
+              value={request.preScript ?? ""}
+              onChange={(preScript) => onChange({ ...request, preScript })}
+            />
+            <ScriptEditor
+              label="Post (con la respuesta)"
+              hint="Valida con omnium.test y guarda datos con omnium.variables.set; omnium.response lee la respuesta."
+              value={request.postScript ?? ""}
+              onChange={(postScript) => onChange({ ...request, postScript })}
+            />
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -211,6 +228,20 @@ export function EnvironmentEditor({
           keyPlaceholder="nombre"
           valuePlaceholder="valor"
           onChange={(variables) => onChange({ ...environment, variables })}
+        />
+      </div>
+      <div className="scripts-panel">
+        <ScriptEditor
+          label="Pre del ambiente"
+          hint="Corre al principio de cada envío y de cada prueba de colección."
+          value={environment.preScript ?? ""}
+          onChange={(preScript) => onChange({ ...environment, preScript })}
+        />
+        <ScriptEditor
+          label="Post del ambiente"
+          hint="Corre al final, después de los scripts de la colección y de la petición."
+          value={environment.postScript ?? ""}
+          onChange={(postScript) => onChange({ ...environment, postScript })}
         />
       </div>
     </section>

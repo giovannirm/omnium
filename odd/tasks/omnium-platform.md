@@ -33,8 +33,7 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 ## Restricciones
 
 - Sin nuevas dependencias runtime (solo react/react-dom); el store de estado es propio.
-- `npm run check` (tsc) y `npm test` (44 tests al cierre de Fase A) deben seguir en verde
-  en cada tarea.
+- `npm run check` (tsc) y `npm test` deben seguir en verde en cada tarea (52 tests tras B1).
 - Código y artefactos técnicos en español solo donde el proyecto ya lo usa (strings, tests);
   identificadores en inglés.
 - Commits convencionales, sin atribución a IA.
@@ -61,7 +60,13 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 | PR 8 | `92a01c7` refactor(ui): ejecución y carga en la capa de estado | 327 |
 | PR 9 | `0e42990` refactor(ui): chrome de la interfaz en la capa de estado | 346 |
 | PR 10 | `b5b2593` test(server): standalone end to end | 84 |
-| docs | `0fd0d9e` + este commit: plan/avance | — |
+| PR 11 | `487b2c6` feat(cli): run headless con informe | 364 |
+| PR 12 | `f927a0c` feat(secrets): marca secret + masking en exportación | 144 |
+| PR 13 | `f09fba9` feat(script): runner de scripts pre/post | 349 |
+| PR 14 | `2077375` feat(model): pre/post en petición, colección y ambiente | 58 |
+| PR 15 | `3204a30` feat(engine): orquestación de scripts + loader de módulos | 455 — **size:exception** (unidad coherente: motor + runner + hosts; cortarla dejaría el motor a medio cablear) |
+| PR 16 | `15bae2c` feat(ui): editor de scripts, logs y cambios de ambiente | 307 |
+| docs | `0fd0d9e`, `a6fb563`, `be6b4bd` + este commit: plan/avance | — |
 
 ## Criterios de aceptación
 
@@ -110,11 +115,77 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
 
 ### Fase B — Capacidades de plataforma
 
-- [ ] **B1** CLI/headless: `omnium run <workspace|colección>` con informe y exit code.
-- [ ] **B2** Secretos en entornos: marca `secret` en `Pair`, masking en UI/export/history.
-- [ ] **B3** Scripting pre/post request (alcance a definir con el usuario antes de arrancar).
+- [x] **B1** CLI/headless: `npm run omnium -- run <workspace|colección.json>` con
+       `--collection`, `--env`, `--json`; informe texto/JSON; códigos 0/1/2.
+       `src/core/cli.ts` (lógica + `runCli` testeable), `src/cli.ts` (entrada delgada),
+       reutiliza `EngineRuntime`, `loadFromDir`/`saveToDir`, `importPostman`,
+       `parseWorkspace`. Ruta: inline. ✅ check + 8 tests nuevos en
+       `src/core/cli.test.ts` (52 totales) + build verdes. Commit `487b2c6`.
+
+- [x] **B2** Secretos en entornos: `Pair.secret` (marca explícita + toggle en `PairTable`,
+       campo enmascarado), `src/core/secrets.ts` (`maskWorkspace`, `maskPairs`,
+       `hasSecrets`, `secretKeys`); el área en disco conserva los valores reales y
+       **la exportación JSON los enmascara**; los snippets avisan cuando el código
+       embebe un secreto. El historial no guarda valores de variables (verificado en
+       `HistoryEntry`), así que no hay filtración ahí. Ruta: inline. ✅ check + 4 tests
+       nuevos (`src/core/secrets.test.ts`, 56 totales) + builds verdes.
+       Commit `f927a0c`.
+- [x] **B3** Scripting pre/post request — **alcance amplio (elegido por el usuario)**:
+      scripts a nivel petición, colección y ambiente; módulos npm locales; editor con
+      resaltado. Contrato decidido:
+      - Fases `pre`/`post` en `RequestModel`, `Collection` y `Environment`.
+      - Los scripts corren en el host del motor (siempre Node: middleware de Vite,
+        servidor standalone, main de Electron, CLI) con `new Function` envuelto en
+        async — **sin `node:vm`** porque `execute.ts` se empaqueta también en el renderer.
+      - API global `omnium`: `log`, `variables.get/set`, `env.get/set`, `test(name, fn)`,
+        `expect(...)` propio (sin dependencias), `request` (pre), `response` (post),
+        `require(spec)` solo con loader inyectado por el host.
+      - Cada `omnium.test` se vuelve un `AssertionResult` (`id: script:…`) → `stepPassed`
+        y el `Outcome` existente lo muestran sin tocar el motor de aserciones.
+      - `ExecutePayload`/`RunPayload` ganan `pre?: ScriptHook[]` (`{label, code}`),
+        `post?: ScriptHook[]`, `environment?: Pair[]`, `moduleDir?: string|null` y
+        `requireModule` (lo adjunta el host en proceso; JSON lo descarta); los cambios
+        de `env.set` vuelven como `environmentChanged`.
+      - Tareas:
+        - [x] **B3-1** `src/core/script.ts` + tests: `runScript`, API, expect, deadline.
+               Orden de `tests` = orden de llamada (reserva de slot + `Promise.all`).
+               Ruta: inline. ✅ 10 tests nuevos. Commit `f09fba9`.
+        - [x] **B3-2** tipos/persistencia: `preScript`/`postScript` en petición,
+               colección y ambiente (`types`, `factory`, `files.ts` + tests de vuelta;
+               ojo: `filesToWorkspace` arma colecciones en línea, no usa `asCollection`).
+               Ruta: inline. ✅ 2 tests nuevos → 68. Commit `2077375`.
+        - [x] **B3-3** motor: hooks en payloads, orquestación en `executeRequest`
+               (pre: ambiente → colección → petición; post: petición → colección →
+               ambiente; un pre que falla aborta antes de la red, un post que falla
+               queda como aserción fallida), `environmentChanged` en resultado e
+               informe, merge de `extracted` sin gate de `ok`, loader de módulos en
+               router/Electron/CLI, CLI compone hooks + imprime logs. Ruta: inline.
+               ✅ 4 tests de integración → 72 + builds. Commit `3204a30` (455 líneas,
+               size:exception: unidad motor+hosts).
+        - [x] **B3-4** UI: `ScriptEditor` (textarea transparente sobre `pre`
+               tokenizado — comentarios/cadenas/números/palabras clave/`omnium`,
+               sin dependencias) en pestaña Scripts de la petición, en el editor
+               de ambiente y en la etapa de colección; logs de scripts en el
+               panel Pruebas; `applyEnvironmentChanges` en `model.ts` + los
+               payloads de `send`/`testCollection` llevan hooks, ambiente y
+               `moduleDir`. Ruta: inline. ✅ 2 tests nuevos → 74 + builds.
+               Commit `15bae2c`.
+        - [x] **B3-5** módulos locales: `src/host/moduleLoader.ts` (createRequire
+               desde el dir del área) enganchado en router (usa `moduleDir` del
+               payload), Electron (`currentDir` de respaldo) y CLI; sin loader el
+               error ya vive en `script.ts`. Verificado con smoke real: módulo
+               local cargado desde la CLI y mensaje claro sin loader.
+        - [x] **B3-6** cierre: ✅ `check` limpio, **74/74 tests**, builds de
+               renderer y Electron verdes; smokes: CLI end-to-end (hooks, logs,
+               `ultimo=token-ada` propagado por la corrida, `omnium.require`),
+               y por HTTP (`POST /__omnium/execute` con pre/post → `script:1`
+               pasó, `environmentChanged: {via: "http"}`).
 
 ## Progreso
+
+> ⚠️ **Espejo Engram pendiente**: `mem_save` del topic `odd/omnium-platform/tasks` falla en
+> esta sesión (el servidor Engram no confirma el registro de la sesión, 3 intentos). El
+> archivo local es la fuente de verdad hasta que se pueda re-sincronizar.
 
 - 2026-10-01: feature creada; exploración y diagnóstico completados; baseline verde
   (`tsc` limpio, 19/19 tests). Alcance decidido: "Ambas, por capas".
@@ -123,5 +194,26 @@ plataforma (Fase B). El usuario eligió esta opción explícitamente.
   composición + diálogos presentacionales; `useAppState.ts` 605, `model.ts` 295.
   A5 completo (`b5b2593`): 44 tests, smoke de `npm run serve`.
 - **Fase A cerrada**. Pendiente único: smoke visual de la UI en navegador.
-- Próximo paso: **Fase B** — B1 CLI/headless; B2 secretos en entornos; B3 scripting
-  (alcance a definir con el usuario antes de arrancar).
+- 2026-10-02: **B1 completo** (`487b2c6`): CLI headless `npm run omnium -- run …`,
+  8 tests nuevos → 52 en verde; smoke de `help` y código de salida 2 verificado.
+- 2026-10-02: **B2 completo** (`f927a0c`): 4 tests nuevos → 56 en verde. El historial
+  no almacena valores (comprobado en `HistoryEntry`), por eso el masking se aplica a
+  la exportación y a la UI, no a `history.json`.
+- 2026-10-02: **B3 en marcha — alcance "Amplio" elegido por el usuario**.
+  B3-1 (`f09fba9`), B3-2 (`2077375`), B3-3 (`3204a30`) completos: scripts
+  pre/post persisten, se orquestan en el motor (ambiente → colección → petición
+  en pre; inverso en post), los tests de scripts entran como `script:n` en las
+  aserciones, `omnium.env.*` reporta `environmentChanged` y los hosts con Node
+  adjuntan el loader de `omnium.require`. 72 tests en verde, builds verdes.
+  Siguiente: B3-4 (editor UI + logs en Outcome + aplicar cambios de ambiente).
+- 2026-10-02: **B3 completo — Fase B completa** (alcance "Amplio").
+  B3-1 `f09fba9`, B3-2 `2077375`, B3-3 `3204a30`, B3-4 `15bae2c`, B3-5/B3-6
+  verificados en el cierre: 74 tests verdes, builds verdes, smokes de CLI
+  (hooks + `omnium.require` con módulo local + `environmentChanged` propagado)
+  y de HTTP (`/__omnium/execute` con scripts). Orden de hooks: ambiente →
+  colección → petición en pre; inverso en post. Un pre que falla aborta antes
+  de la red; un post que falla queda como aserción fallida (`script:n`).
+- **Pendientes**: smoke visual de la UI en navegador (editor de scripts sin
+  revisar en vivo), espejo Engram del plan (`mem_save` falla en esta sesión),
+  y la entrega en PR (rama `feat/engine-runtime`, 24 commits sin push;
+  push/PR son decisión del usuario).
