@@ -77,8 +77,11 @@ test("importCollection rechaza un área como colección, con error claro", () =>
 test("importCollection rechaza formatos no soportados nombrando el formato", () => {
   const hoppscotch = JSON.stringify({ v: 2, items: [{ name: "Ping", method: "GET", url: "https://api.test" }] });
   assert.throws(() => importCollection(hoppscotch, "x.json"), /Hoppscotch/);
+});
+
+test("importCollection rechaza planes JMeter vacíos nombrando el motivo", () => {
   const jmeter = '<jmeterTestPlan version="1.2"></jmeterTestPlan>';
-  assert.throws(() => importCollection(jmeter, "x.jmx"), /JMeter/);
+  assert.throws(() => importCollection(jmeter, "x.jmx"), /no tiene peticiones/);
 });
 
 test("importCollection explica un .bru sin petición", () => {

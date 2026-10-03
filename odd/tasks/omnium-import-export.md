@@ -119,11 +119,18 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
   - [x] **Límite documentado (Progreso)**: la exportación Bruno es un archivo por
         petición y NO recrea carpetas/`bruno.json` (Bruno no importa `.bru` sueltos;
         el usuario los coloca en su colección existente)
-- [ ] **T5 — JMeter (`.jmx`)**
-  - [ ] Parser dirigido de XML (tags conocidos, sin dependencia): ThreadGroup → colección,
-        HTTPSamplerProxy → petición (método/dominio/puerto/ruta/query), headers, body,
-        ResponseAssertion → aserciones, CSVDataSet → variables
-  - [ ] Tests: fixture JMX con2 samplers + assertion + CSV
+- [x] **T5 — JMeter (`.jmx`)**
+  - [x] `xmlMini.ts` (parser XML propio: attrs, texto, comentarios, CDATA,
+        entidades, self-closing, errores con nº de línea) + `jmeter.ts`
+        (TestPlan → nombre/variables, ThreadGroup → peticiones con headers y
+        aserciones por scope, HTTPSamplerProxy → URL `protocol://dominio[:puerto]/ruta`
+        + query/`postBodyRaw` → json/text o args → form/params, ResponseAssertion
+        dirigida: código=EQUALS → status eq/neq, datos=CONTAINS → body contains,
+        CSVDataSet → variables vacías + aviso)
+  - [x] Tests: fixture JMX con 2 samplers + assertion + CSV + scope, errores,
+        método no soportado, CSV sin nombres, aserción no mapeable, URL absoluta
+  - [x] Límites: plan de carga (hilos) no se importa (aviso); extractores
+        `JSONPostProcessor` y plantillas `IfController` quedan fuera del scope dirigido
 - [ ] **T6 — Hoppscotch + Thunder Client**
   - [ ] `hoppscotch.ts`: export JSON (`v`, `items` recursivos con folders)
   - [ ] `thunder.ts`: export JSON (`_type: request-import`, `requests` / colección)
@@ -166,3 +173,4 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 - [x] T1+T2 ✅ (99/99 tests, tsc + build verdes) → T3 → T9
 - [x] T3 ✅ (115/115 tests, tsc + build verdes) → T4
 - [x] T4 ✅ (120/120 tests, tsc + build verdes) → T5
+- [x] T5 ✅ (127/127 tests, tsc + build verdes) → T6

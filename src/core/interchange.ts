@@ -1,5 +1,6 @@
 import { importBru } from "./bruno.ts";
 import { importInsomnia } from "./insomnia.ts";
+import { importJmeter } from "./jmeter.ts";
 import { importPostman } from "./postman.ts";
 import type { Collection } from "./types.ts";
 
@@ -56,6 +57,7 @@ export function importCollection(text: string, fileName?: string): ImportResult 
   }
   if (format === "insomnia") return importInsomnia(text);
   if (format === "bruno") return importBru(text);
+  if (format === "jmeter") return importJmeter(text);
   throw new Error(`El formato ${FORMATS[format].label} todavía no está soportado en esta versión`);
 }
 
