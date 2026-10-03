@@ -166,18 +166,23 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
   - [x] `loadTarget` usa `importCollection` (cualquier formato directo en
         `omnium run archivo`; ya cableado desde T1/T2 — este slice añade la
         prueba de ejecución desde un `.bru`, formato no-JSON)
-- [ ] **T9 — Cierre**: smokes por formato, greps, docs (Progreso + tabla de slices), commits
+- [x] **T9 — Cierre**: smokes por formato, greps, docs (Progreso + tabla de slices), commits
+  - [x] Smoke end-to-end de los 6 formatos + área + unknown (script efímero,
+        8/8 ok: detect → import → export bruno)
+  - [x] Greps: sin restos de `beginImport("postman")`/`importPostman` en UI/CLI,
+        sin "formato no soportado", sin TODO/FIXME en `src/core` y `src/ui`
+  - [x] Docs: Progreso + tabla de slices con commits
 
 ## Forecast de líneas autoradas
 
-| Slice | Contenido | Estimación | PR |
-|---|---|---|---|
-| T1+T2 | motor + Postman + puente pm | ~700 | PR21 |
-| T3 | Insomnia + yamlMini | ~450 | PR22 |
-| T4+T5 | Bruno + JMeter | ~500 | PR23 |
-| T6 | Hoppscotch + Thunder | ~250 | PR24 |
-| T7+T8+T9 | UI + CLI + cierre | ~450 | PR25 |
-| **Total** | | **~2350** | chain `stacked-to-main` ya cacheada |
+| Slice | Contenido | Estimación | PR | Commit |
+|---|---|---|---|---|
+| T1+T2 | motor + Postman + puente pm | ~700 | PR21 | `c0e4c9c` |
+| T3 | Insomnia + yamlMini | ~450 | PR22 | `8b41817` |
+| T4+T5 | Bruno + JMeter | ~500 | PR23 | `0be8cbe`, `7546441` |
+| T6 | Hoppscotch + Thunder | ~250 | PR24 | `651a003` |
+| T7+T8+T9 | UI + CLI + cierre | ~450 | PR25 | `b96ac08`, `15f19b9`, cierre |
+| **Total** | | **~2350** | chain `stacked-to-main` ya cacheada | |
 
 ## No-objetivos (explícitos)
 
@@ -203,3 +208,6 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
       auto-detección y modal de export en UI; smoke visual en navegador pendiente
 - [x] T8 ✅ (140/140 tests, tsc verdes; build ya verde en T7) → T9 — CLI ya
       ejecutaba cualquier formato; añadido test de ejecución desde `.bru`
+- [x] T9 ✅ (140/140 tests, tsc + build verdes; smoke 8/8, greps limpios) →
+      **feature cerrada**. Pendientes declarados: smoke visual en navegador,
+      push/PR (decisión del usuario), git identity auto-configurada.
