@@ -25,6 +25,7 @@ export function App() {
     openArea,
     createArea,
     exportArea,
+    exportCollection,
     selection,
     tabs,
     choose,
@@ -133,8 +134,8 @@ export function App() {
           <button type="button" className="ghost" onClick={() => beginImport("area")}>
             Importar
           </button>
-          <button type="button" className="ghost" onClick={() => beginImport("postman")}>
-            Postman
+          <button type="button" className="ghost" onClick={() => beginImport("collection")}>
+            Colección
           </button>
           <button type="button" className="ghost command" onClick={() => setModal("palette")}>
             Buscar <kbd>{commandKey}K</kbd>
@@ -319,7 +320,7 @@ export function App() {
       <input
         ref={importRef}
         type="file"
-        accept="application/json,.json"
+        accept=".json,.yaml,.yml,.jmx,.bru,application/json,application/xml,text/xml"
         hidden
         onChange={(event) => {
           const file = event.target.files?.[0];
@@ -354,6 +355,53 @@ export function App() {
           onClose={() => setModal(null)}
           onClear={() => void forgetCookies()}
         />
+      ) : null}
+      {modal === "export" ? (
+        <div className="modal-back" onClick={() => setModal(null)}>
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="export-title" onClick={(event) => event.stopPropagation()}>
+            <h2 id="export-title">Exportar colección</h2>
+            <p className="hint">
+              {selected && (selected.kind === "collection" || selected.kind === "request")
+                ? `Colección: ${selected.collection.name}`
+                : "Elige una colección en el panel"}
+            </p>
+            <div className="toolbar">
+              <button
+                type="button"
+                className="send"
+                onClick={() => {
+                  exportCollection("postman");
+                  setModal(null);
+                }}
+              >
+                Postman JSON
+              </button>
+              <button
+                type="button"
+                className="send"
+                onClick={() => {
+                  exportCollection("insomnia");
+                  setModal(null);
+                }}
+              >
+                Insomnia v4
+              </button>
+              <button
+                type="button"
+                className="send"
+                onClick={() => {
+                  exportCollection("bruno");
+                  setModal(null);
+                }}
+              >
+                Bruno .bru
+              </button>
+              <button type="button" className="ghost" onClick={() => setModal(null)}>
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
       {modal === "curl" && selected?.kind === "request" ? (
         <div className="modal-back" onClick={() => setModal(null)}>

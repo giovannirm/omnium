@@ -6,7 +6,7 @@
 - **Fecha**: 2026-10-02
 - **Ruta elegida**: direct inline (subagentes bloqueados por OpenCode free tier — decisión documentada).
 - **Estrategia de entrega**: `ask-on-risk` + chain **`stacked-to-main`** (ya cacheadas en sesión);
-  slices = commits = PR candidatos (PR21…).
+  slices = commits = PR (etiquetas del plan PR21…; en GitHub la cadena es **#7…#11**).
 - **Modo TDD**: deshabilitado; `npm run check` + `npm test` + `npm run build` en cada slice.
 
 ## Objetivo
@@ -131,30 +131,58 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
         método no soportado, CSV sin nombres, aserción no mapeable, URL absoluta
   - [x] Límites: plan de carga (hilos) no se importa (aviso); extractores
         `JSONPostProcessor` y plantillas `IfController` quedan fuera del scope dirigido
-- [ ] **T6 — Hoppscotch + Thunder Client**
-  - [ ] `hoppscotch.ts`: export JSON (`v`, `items` recursivos con folders)
-  - [ ] `thunder.ts`: export JSON (`_type: request-import`, `requests` / colección)
-  - [ ] Tests por formato (fixture de cada uno)
-- [ ] **T7 — UI: importar/exportar**
-  - [ ] Comando único "Importar colección…" (auto-detección + selector de formato + avisos);
-        reemplaza el kind fijo `postman` de `beginImport`
-  - [ ] Comando "Exportar colección…" → Postman JSON / Insomnia v4 / Bruno `.bru`
-        (descarga por formato)
-  - [ ] Tests de estado donde aplique; verificación visual documentada como pendiente
-- [ ] **T8 — CLI con auto-detección**
-  - [ ] `loadTarget` usa `importCollection` (cualquier formato directo en `omnium run archivo`)
-- [ ] **T9 — Cierre**: smokes por formato, greps, docs (Progreso + tabla de slices), commits
+- [x] **T6 — Hoppscotch + Thunder Client**
+  - [x] `hoppscotch.ts`: HoppCollection real (`name`, `folders` anidadas,
+        `requests` con `endpoint`, body por `contentType`, auth heredada
+        `inherit`, scripts `preRequestScript`/`testScript`, `variables`);
+        refs por id en `folder.requests` (formato v9) y objetos embebidos;
+        GraphQL (url+query o body graphql) → aviso
+  - [x] `thunder.ts`: `_type: "request-import"` + Database Format v3
+        (`client: "Thunder Client"`) + array de peticiones; carpetas por
+        `containerId` → prefijo `Carpeta / `; `tests` → aserciones nativas
+        (ops limitadas a `OPS_FOR`); `settings.followRedirects`; auth
+        none/bearer/basic/apikey; scripts `tc.*` importados con aviso
+  - [x] Detección ampliada: `name+folders+requests` → hoppscotch;
+        `client: "Thunder Client"` → thunder (sniffs previos conservados)
+  - [x] Tests por formato (3 c/u) + tests de detección en interchange
+  - [x] Límites: GraphQL no se importa (URL sola + aviso); timeout Thunder
+        ignorado (unidad sin confirmar); environments .env fuera de alcance
+- [x] **T7 — UI: importar/exportar**
+  - [x] Comando único "Importar colección…" (auto-detección + avisos en el toast);
+        reemplaza el kind fijo `postman` de `beginImport`; botón "Colección" en
+        la barra; `accept` ampliado a `.json/.yaml/.yml/.jmx/.bru`;
+        si el archivo es un área Omnium elegida como colección se adopta como
+        área (no se duplica)
+  - [x] Modal "Exportar colección…" (comando en la paleta + botones) →
+        Postman JSON / Insomnia v4 / Bruno `.bru`; usa la colección de la
+        selección (colección o petición activa); descarga con nombre seguro
+        (`fileSlug`); Bruno descarga un `.bru` por petición
+  - [x] Tests de `exportCollectionAs`/`fileSlug` en interchange.test.ts;
+        verificación visual en navegador documentada como **pendiente**
+  - [x] Desviación consciente: no hubo "selector de formato" en import; la
+        auto-detección por contenido cubre los 6 formatos y el caso "unknown"
+        ya nombra el motivo en el toast (un selector manual no añadía nada)
+- [x] **T8 — CLI con auto-detección**
+  - [x] `loadTarget` usa `importCollection` (cualquier formato directo en
+        `omnium run archivo`; ya cableado desde T1/T2 — este slice añade la
+        prueba de ejecución desde un `.bru`, formato no-JSON)
+- [x] **T9 — Cierre**: smokes por formato, greps, docs (Progreso + tabla de slices), commits
+  - [x] Smoke end-to-end de los 6 formatos + área + unknown (script efímero,
+        8/8 ok: detect → import → export bruno)
+  - [x] Greps: sin restos de `beginImport("postman")`/`importPostman` en UI/CLI,
+        sin "formato no soportado", sin TODO/FIXME en `src/core` y `src/ui`
+  - [x] Docs: Progreso + tabla de slices con commits
 
 ## Forecast de líneas autoradas
 
-| Slice | Contenido | Estimación | PR |
-|---|---|---|---|
-| T1+T2 | motor + Postman + puente pm | ~700 | PR21 |
-| T3 | Insomnia + yamlMini | ~450 | PR22 |
-| T4+T5 | Bruno + JMeter | ~500 | PR23 |
-| T6 | Hoppscotch + Thunder | ~250 | PR24 |
-| T7+T8+T9 | UI + CLI + cierre | ~450 | PR25 |
-| **Total** | | **~2350** | chain `stacked-to-main` ya cacheada |
+| Slice | Contenido | Estimación | PR | Commit |
+|---|---|---|---|---|
+| T1+T2 | motor + Postman + puente pm | ~700 | PR21 → **#7** | `c0e4c9c` |
+| T3 | Insomnia + yamlMini | ~450 | PR22 → **#8** | `8b41817` |
+| T4+T5 | Bruno + JMeter | ~500 | PR23 → **#9** | `0be8cbe`, `7546441` |
+| T6 | Hoppscotch + Thunder | ~250 | PR24 → **#10** | `651a003` |
+| T7+T8+T9 | UI + CLI + cierre | ~450 | PR25 → **#11** | `b96ac08`, `15f19b9`, `ad59c5f` + cierre |
+| **Total** | | **~2350** | chain `stacked-to-main` ya cacheada | |
 
 ## No-objetivos (explícitos)
 
@@ -174,3 +202,18 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 - [x] T3 ✅ (115/115 tests, tsc + build verdes) → T4
 - [x] T4 ✅ (120/120 tests, tsc + build verdes) → T5
 - [x] T5 ✅ (127/127 tests, tsc + build verdes) → T6
+- [x] T6 ✅ (136/136 tests, tsc + build verdes) → T7 — los 6 importadores
+      quedaron cableados en el dispatcher (sin formatos "no soportados")
+- [x] T7 ✅ (139/139 tests, tsc + build verdes) → T8 — import/export con
+      auto-detección y modal de export en UI; smoke visual en navegador pendiente
+- [x] T8 ✅ (140/140 tests, tsc verdes; build ya verde en T7) → T9 — CLI ya
+      ejecutaba cualquier formato; añadido test de ejecución desde `.bru`
+- [x] T9 ✅ (140/140 tests, tsc + build verdes; smoke 8/8, greps limpios) →
+      **feature cerrada**. Pendientes declarados: smoke visual en navegador,
+      push/PR (decisión del usuario), git identity auto-configurada.
+- [x] **Entrega**: smoke visual ejecutado (12/12 aserciones DOM + captura,
+      Electron contra Vite); identidad git fijada (noreply de `giovannirm`);
+      push de las 13 ramas y cadena de **11 PRs** creados (#1 plataforma A/B,
+      #3–#6 refactor, **#7–#11 esta feature**, todos apilados y MERGEABLE).
+      Queda pendiente del usuario mergear en orden #1 → #11 y el espejo
+      Engram (el servidor sigue sin registrar sesión).

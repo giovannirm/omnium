@@ -1,7 +1,9 @@
-import { importBru } from "./bruno.ts";
-import { importInsomnia } from "./insomnia.ts";
+import { exportBru, importBru } from "./bruno.ts";
+import { exportInsomnia, importInsomnia } from "./insomnia.ts";
+import { importHoppscotch } from "./hoppscotch.ts";
 import { importJmeter } from "./jmeter.ts";
-import { importPostman } from "./postman.ts";
+import { exportPostman, importPostman } from "./postman.ts";
+import { importThunder } from "./thunder.ts";
 import type { Collection } from "./types.ts";
 
 /** Formatos de colección que Omnium puede importar. */
@@ -58,7 +60,53 @@ export function importCollection(text: string, fileName?: string): ImportResult 
   if (format === "insomnia") return importInsomnia(text);
   if (format === "bruno") return importBru(text);
   if (format === "jmeter") return importJmeter(text);
-  throw new Error(`El formato ${FORMATS[format].label} todavía no está soportado en esta versión`);
+  const json = tryParse(text);
+  if (json === undefined) throw new Error("El archivo no es JSON válido");
+  return format === "hoppscotch" ? importHoppscotch(json) : importThunder(json);
+}
+
+/** Formatos de exportación de colección. */
+export type ExportFormat = "postman" | "insomnia" | "bruno";
+
+/** Un archivo a descargar: `content` completo y `name` con extensión. */
+export type ExportFile = { name: string; content: string };
+
+/**
+ * Devuelve los archivos a descargar para exportar `collection`.
+ * Bruno genera un `.bru` por petición (un export por archivo, por diseño).
+ */
+export function exportCollectionAs(format: ExportFormat, collection: Collection): ExportFile[] {
+  if (format === "postman") {
+    return [
+      {
+        name: `${fileSlug(collection.name)}.postman.json`,
+        content: `${JSON.stringify(exportPostman(collection), null, 2)}\n`,
+      },
+    ];
+  }
+  if (format === "insomnia") {
+    return [
+      {
+        name: `${fileSlug(collection.name)}.insomnia.json`,
+        content: `${JSON.stringify(exportInsomnia(collection), null, 2)}\n`,
+      },
+    ];
+  }
+  return collection.requests.map((request) => ({
+    name: `${fileSlug(collection.name)}-${fileSlug(request.name)}.bru`,
+    content: exportBru(request),
+  }));
+}
+
+/** Nombre de archivo seguro: sin acentos, sin separadores de ruta, en minúsculas. */
+export function fileSlug(name: string): string {
+  const slug = name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+  return slug || "coleccion";
 }
 
 function sniffJson(json: unknown): DetectedFormat {
@@ -68,8 +116,11 @@ function sniffJson(json: unknown): DetectedFormat {
   // v5 serializado como JSON: el discriminador es `type: *.insomnia.rest/5.0`.
   if (typeof record.type === "string" && record.type.includes("insomnia.rest")) return "insomnia";
   if (record._type === "request-import") return "thunder";
+  if (typeof record.client === "string" && record.client === "Thunder Client") return "thunder";
   if (record.info && record.item) return "postman";
   if (record.collections && record.version === 1) return "omnium-area";
+  // HoppCollection: {name, folders[], requests[]} con v opcional.
+  if (typeof record.name === "string" && Array.isArray(record.folders) && Array.isArray(record.requests)) return "hoppscotch";
   if (record.items !== undefined && (record.v === 1 || record.v === 2)) return "hoppscotch";
   return "unknown";
 }
