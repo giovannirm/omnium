@@ -42,7 +42,7 @@ Improve Omnium's user experience and visual theme by making light mode the defau
   - [x] `npm run check`
   - [x] `npm test`
   - [x] `npm run build`
-  - [x] Visual smoke feasibility recorded for light default + dark toggle + key UI surfaces.
+  - [x] Visual smoke completed for light default + dark toggle + key UI surfaces.
   - [x] Commit with verification evidence.
 
 ## Progress
@@ -52,4 +52,7 @@ Improve Omnium's user experience and visual theme by making light mode the defau
 - [x] Implemented light-first theme state in `src/ui/App.tsx`, persisted under `omnium.theme`, and exposed a top-bar Spanish toggle with `aria-pressed`.
 - [x] Reworked `src/ui/styles.css` into light and dark token sets using `data-theme`, with calmer surfaces, stronger primary actions, clearer code areas, and improved hover/focus/active states.
 - [x] Verification passed on 2026-10-03: `npm run check`, `npm test` (140 passing), and `npm run build`.
-- [x] Lightweight visual smoke feasibility: production renderer build emitted themed CSS and app assets successfully. Browser screenshot/DOM automation was not feasible without adding a new browser/tool dependency, which is out of scope.
+- [x] Visual smoke completed with the existing Electron runner approach (no new dependency):
+      9/9 checks passed — app boot, default `data-theme="light"`, visible accessible
+      toggle, switch to `dark`, persisted `localStorage` value, and both screenshots saved.
+      Captures: `/tmp/opencode/theme-light.png` and `/tmp/opencode/theme-dark.png`.
