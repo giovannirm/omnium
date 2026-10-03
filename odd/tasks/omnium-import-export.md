@@ -162,8 +162,10 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
   - [x] Desviación consciente: no hubo "selector de formato" en import; la
         auto-detección por contenido cubre los 6 formatos y el caso "unknown"
         ya nombra el motivo en el toast (un selector manual no añadía nada)
-- [ ] **T8 — CLI con auto-detección**
-  - [ ] `loadTarget` usa `importCollection` (cualquier formato directo en `omnium run archivo`)
+- [x] **T8 — CLI con auto-detección**
+  - [x] `loadTarget` usa `importCollection` (cualquier formato directo en
+        `omnium run archivo`; ya cableado desde T1/T2 — este slice añade la
+        prueba de ejecución desde un `.bru`, formato no-JSON)
 - [ ] **T9 — Cierre**: smokes por formato, greps, docs (Progreso + tabla de slices), commits
 
 ## Forecast de líneas autoradas
@@ -199,3 +201,5 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
       quedaron cableados en el dispatcher (sin formatos "no soportados")
 - [x] T7 ✅ (139/139 tests, tsc + build verdes) → T8 — import/export con
       auto-detección y modal de export en UI; smoke visual en navegador pendiente
+- [x] T8 ✅ (140/140 tests, tsc verdes; build ya verde en T7) → T9 — CLI ya
+      ejecutaba cualquier formato; añadido test de ejecución desde `.bru`

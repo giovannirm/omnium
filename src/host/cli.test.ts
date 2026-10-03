@@ -140,3 +140,27 @@ test("una colección de Postman se ejecuta desde archivo", async () => {
   assert.equal(code, 0, sink.stderr.join("\n"));
   assert.match(sink.stdout.join("\n"), /Colección Importada/);
 });
+
+test("una colección de Bruno se ejecuta desde archivo .bru", async () => {
+  const file = path.join(root, "salud.bru");
+  await writeFile(
+    file,
+    [
+      "meta {",
+      "  name: Salud Bruno",
+      "  type: http",
+      "}",
+      "",
+      "http {",
+      `  url: http://127.0.0.1:${demo.port}/health`,
+      "  method: get",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const sink = io();
+  const code = await runCli(["run", file], sink);
+  assert.equal(code, 0, sink.stderr.join("\n"));
+  assert.match(sink.stdout.join("\n"), /Colección Salud Bruno/);
+});
