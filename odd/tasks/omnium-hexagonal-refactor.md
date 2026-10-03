@@ -63,12 +63,26 @@ están implícitos, partir los dos archivos "dios" y eliminar la única arista i
         y `App.tsx` sin cambios) — leve desvío del objetivo ~300: los efectos permanecen en
         el hook por ser material declarativo
   - [x] Verificado: `npm run check` limpio, `npm test` 77/77, `npm run build` verde
-- [ ] **R4 — Ordenar hosts: CLI y disk salen de `core`**
-  - [ ] `src/core/cli.ts` + `src/core/disk.ts` → `src/host/`
-  - [ ] Actualizar glob `test` en package.json (`src/host/*.test.ts`) y mover `cli.test.ts`
-  - [ ] Corregir importadores (`src/cli.ts` entry, `engine.test.ts`)
-  - [ ] Presentación (`print`/`toJson`/`message`) en `src/host/cliFormat.ts` si queda limpio
-- [ ] **Cierre**: smokes (CLI e2e + HTTP `__omnium/execute`), greps de capa, docs (Progreso + tabla de slices)
+- [x] **R4 — Ordenar hosts: CLI y disk salen de `core`**
+  - [x] `git mv`: `src/core/cli.ts` → `src/host/cli.ts` (244 → **170 líneas**),
+        `src/core/disk.ts` → `src/host/disk.ts`, `src/core/cli.test.ts` → `src/host/cli.test.ts`
+  - [x] Presentación extraída a `src/host/cliFormat.ts` (77 líneas: `CliIo`, `print`, `toJson`,
+        `mergeChanged`, `message`); `cli.ts` re-exporta `CliIo`
+  - [x] **Arista invertida eliminada**: `host/cli.ts` importa `./moduleLoader.ts` (era `../host/`)
+  - [x] Importadores corregidos: `src/cli.ts`, `src/core/engine.test.ts` (`../host/disk.ts`),
+        `src/host/cli.test.ts` (`../core/sample|types`), **`electron/main.ts`** (no estaba en la lista)
+  - [x] Glob `test` en package.json: `+ src/host/*.test.ts`
+  - [x] Verificado: `npm run check` limpio, `npm test` 77/77, `npm run build` verde
+- [x] **Cierre**
+  - [x] Smoke CLI real: `--help` exit 0 · comando desconocido exit 2 · `run /no/existe` exit 2
+  - [x] Smoke HTTP real: `npm run serve` + `POST /__omnium/execute` → `ok:true`, status 200,
+        aserción pasada (12 ms)
+  - [x] Greps de capa (no-test): `node:fs|path|os` en `core` **limpio**; `core → host` **limpio**;
+        `fetch(` fuera de `http.ts`: solo `execute.ts:37` (binding por defecto del puerto
+        `HttpSender`) y `snippets.ts:11` (string de código generado, no una llamada) — ambos esperados
+  - [x] Nota: el único `core → host` restante es `engine.test.ts` → `../host/disk.ts` (fixtures de
+        test; los greps de capa excluyen `*.test.ts`)
+  - [x] Docs actualizadas (esta sección + Progreso)
 
 ## Forecast de líneas autoradas (al crear)
 
@@ -84,4 +98,9 @@ están implícitos, partir los dos archivos "dios" y eliminar la única arista i
 
 - [x] Exploración y diagnóstico (evidencia de capas y tamaños)
 - [x] Documento creado (esta rama, antes de la primera escritura de código)
-- [x] R1 ✅ `3898a14` · R2 ✅ `c8e70a0` · R3 ✅ (commit de este slice) → R4 → cierre
+- [x] R1 ✅ `3898a14` · R2 ✅ `c8e70a0` · R3 ✅ `367cf22` · R4 ✅ (commit de este slice) · cierre ✅
+
+**Estado final**: refactor completo. `execute.ts` 633→278, `useAppState.ts` 631→345,
+`cli.ts` fuera de `core` (arista invertida eliminada), greps de capa limpios,
+77/77 tests + `tsc` + build verdes. Pendiente del usuario: push y creación de
+PR17–PR20 (stacked-to-main); smoke visual de la UI en navegador.

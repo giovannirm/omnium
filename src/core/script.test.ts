@@ -157,3 +157,84 @@ test("externalHooks ordena ambiente por fuera y colección por dentro", async ()
   ]);
   assert.deepEqual(externalHooks({ preScript: "  " }, null), {});
 });
+
+test("puente pm: tests estilo Postman de status y json pasan", async () => {
+  const outcome = await runScript(
+    `
+    pm.test("status es 200", () => { pm.response.to.have.status(200); });
+    pm.test("tiene ok", () => { pm.expect(pm.response.json()).to.have.property("ok", true); });
+    `,
+    { phase: "post", ...base, response: response() },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.tests.length, 2);
+  assert.equal(
+    outcome.tests.every((row) => row.passed),
+    true,
+  );
+});
+
+test("puente pm: un status distinto hace fallar el test, no el script", async () => {
+  const outcome = await runScript(
+    `pm.test("status 201", () => { pm.response.to.have.status(201); });`,
+    { phase: "post", ...base, response: response() },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.tests[0]?.passed, false);
+  assert.match(outcome.tests[0]?.message ?? "", /201/);
+});
+
+test("puente pm: expect chai con not, include y variables de ambiente", async () => {
+  const outcome = await runScript(
+    `
+    pm.test("json", () => {
+      pm.expect(pm.response.json().items).to.include(2);
+      pm.expect(pm.response.text).to.contain("ok");
+    });
+    pm.test("negacion", () => { pm.expect(pm.response.code).not.to.equal(500); });
+    pm.environment.set("sesion", "abc");
+    pm.test("variables", () => { pm.expect(pm.environment.get("sesion")).to.equal("abc"); });
+    `,
+    { phase: "post", ...base, response: response() },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(
+    outcome.tests.every((row) => row.passed),
+    true,
+  );
+  assert.equal(outcome.environment.sesion, "abc");
+});
+
+test("puente pm: ok, header y oneOf de la respuesta", async () => {
+  const outcome = await runScript(
+    `
+    pm.test("ok", () => { pm.response.to.be.ok; });
+    pm.test("header", () => { pm.response.to.have.header("content-type", "application/json"); });
+    pm.test("codigo", () => { pm.response.to.be.oneOf(200, 201); });
+    `,
+    { phase: "post", ...base, response: response() },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(
+    outcome.tests.every((row) => row.passed),
+    true,
+  );
+});
+
+test("puente pm: alias postman legacy y request con addHeader", async () => {
+  const outcome = await runScript(
+    `
+    postman.setEnvironmentVariable("clave", "xyz");
+    pm.request.addHeader("X-Trace", "1");
+    pm.test("url", () => { pm.expect(pm.request.url).to.contain("salud"); });
+    `,
+    { phase: "pre", ...base, request: request() },
+  );
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.environment.clave, "xyz");
+  assert.equal(
+    outcome.request?.headers.find((row) => row.name === "X-Trace")?.value,
+    "1",
+  );
+  assert.equal(outcome.tests[0]?.passed, true);
+});

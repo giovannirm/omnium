@@ -6,7 +6,7 @@ import { after, before, test } from "node:test";
 import { stepPassed } from "./assertions.ts";
 import { CookieJar } from "./cookies.ts";
 import { parseCurl } from "./curl.ts";
-import { loadFromDir, saveToDir } from "./disk.ts";
+import { loadFromDir, saveToDir } from "../host/disk.ts";
 import { EngineRuntime } from "./engine.ts";
 import { executeRequest, toCurl } from "./execute.ts";
 import { filesToWorkspace, workspaceToFiles } from "./files.ts";

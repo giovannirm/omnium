@@ -1,4 +1,5 @@
 import type { AssertionResult } from "./types.ts";
+import { createPostmanLegacy, createPm } from "./pm.ts";
 
 export type ScriptPhase = "pre" | "post";
 
@@ -123,11 +124,29 @@ export async function runScript(code: string, options: ScriptOptions): Promise<S
     },
   };
 
+  /** Puente Postman: mismo estado que `omnium`, API `pm.*` para colecciones importadas. */
+  const pm = createPm({
+    test: omnium.test,
+    log: omnium.log,
+    variables: omnium.variables,
+    environment: omnium.env,
+    ...(request ? { request } : {}),
+    ...(options.response ? { response: options.response } : {}),
+  });
+  const postmanLegacy = createPostmanLegacy(pm);
+
   try {
-    const runner = new Function("omnium", `"use strict";\nreturn (async () => {\n${code}\n})();`) as (
+    const runner = new Function(
+      "omnium",
+      "pm",
+      "postman",
+      `"use strict";\nreturn (async () => {\n${code}\n})();`,
+    ) as (
       scope: typeof omnium,
+      pmScope: Record<string, unknown>,
+      legacyScope: Record<string, unknown>,
     ) => Promise<unknown>;
-    await withDeadline(runner(omnium), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    await withDeadline(runner(omnium, pm, postmanLegacy), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     await Promise.all(running);
     return { ok: true, error: null, ...base() };
   } catch (error) {

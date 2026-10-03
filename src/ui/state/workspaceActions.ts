@@ -183,11 +183,15 @@ export function createWorkspaceActions(deps: {
     try {
       const raw = JSON.parse(await file.text()) as unknown;
       if (importKind.current === "postman") {
-        const collection = importPostman(raw);
+        const { collection, warnings } = importPostman(raw);
         deps.setWorkspace((current) => (current ? appendCollectionRaw(current, collection) : current));
         const request = collection.requests[0];
         if (request) choose({ kind: "request", collectionId: collection.id, requestId: request.id });
-        notify(`Importada la colección ${collection.name}`);
+        notify(
+          warnings.length > 0
+            ? `Importada ${collection.name} · ${warnings.length} avisos`
+            : `Importada la colección ${collection.name}`,
+        );
         return;
       }
       const parsed = parseWorkspace(raw);

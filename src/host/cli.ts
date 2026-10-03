@@ -1,17 +1,15 @@
 import { readFile, stat } from "node:fs/promises";
-import { EngineRuntime } from "./engine.ts";
+import { EngineRuntime } from "../core/engine.ts";
 import { loadFromDir } from "./disk.ts";
-import { importPostman } from "./postman.ts";
-import { parseWorkspace } from "./files.ts";
-import { externalHooks } from "./script.ts";
-import { resolveVariables } from "./variables.ts";
-import type { Collection, CollectionReport, Environment, Workspace } from "./types.ts";
-import { createModuleLoader } from "../host/moduleLoader.ts";
+import { detectFormat, importCollection } from "../core/interchange.ts";
+import { parseWorkspace } from "../core/files.ts";
+import { externalHooks } from "../core/script.ts";
+import { resolveVariables } from "../core/variables.ts";
+import type { Collection, Environment, Workspace } from "../core/types.ts";
+import { createModuleLoader } from "./moduleLoader.ts";
+import { message, print, toJson, type CliIo, type SessionReports } from "./cliFormat.ts";
 
-export type CliIo = {
-  out: (line: string) => void;
-  err: (line: string) => void;
-};
+export type { CliIo } from "./cliFormat.ts";
 
 export type CliOptions = {
   target: string;
@@ -57,12 +55,13 @@ export async function runCli(argv: string[], io: CliIo): Promise<number> {
   }
 
   try {
-    const { workspace, dir } = await loadTarget(options.target);
+    const { workspace, dir, warnings } = await loadTarget(options.target);
+    for (const warning of warnings) io.err(`Aviso: ${warning}`);
     const environment = pickEnvironment(workspace, options.environment);
     const collections = pickCollections(workspace, options.collection);
     const runtime = new EngineRuntime();
     const requireModule = createModuleLoader(dir);
-    const reports: { collection: Collection; report: CollectionReport }[] = [];
+    const reports: SessionReports = [];
     for (const collection of collections) {
       const variables = resolveVariables(environment, {}, {
         globals: workspace.globals,
@@ -118,16 +117,19 @@ export function parseOptions(args: string[]): CliOptions {
   return options;
 }
 
-async function loadTarget(target: string): Promise<{ workspace: Workspace; dir: string | null }> {
+async function loadTarget(target: string): Promise<{ workspace: Workspace; dir: string | null; warnings: string[] }> {
   const info = await stat(target).catch(() => null);
   if (!info) throw new Error(`No existe: ${target}`);
-  if (info.isDirectory()) return { workspace: await loadFromDir(target), dir: target };
+  if (info.isDirectory()) return { workspace: await loadFromDir(target), dir: target, warnings: [] };
 
-  const raw = JSON.parse(await readFile(target, "utf8")) as unknown;
-  if (raw && typeof raw === "object" && "collections" in raw) return { workspace: parseWorkspace(raw), dir: null };
-  const collection = importPostman(raw);
+  const text = await readFile(target, "utf8");
+  if (detectFormat(text, target) === "omnium-area") {
+    return { workspace: parseWorkspace(JSON.parse(text) as unknown), dir: null, warnings: [] };
+  }
+  const { collection, warnings } = importCollection(text, target);
   return {
     dir: null,
+    warnings,
     workspace: {
       version: 1,
       name: collection.name,
@@ -169,76 +171,4 @@ export function pickCollections(workspace: Workspace, asked: string | null): Col
     throw new Error(`No existe la colección "${asked}". Disponibles: ${names}`);
   }
   return found;
-}
-
-function toJson(workspace: Workspace, environment: Environment | null, reports: { collection: Collection; report: CollectionReport }[]) {
-  return {
-    ok: reports.every((entry) => entry.report.failed === 0),
-    area: workspace.name,
-    environment: environment?.name ?? null,
-    environmentChanged: mergeChanged(reports),
-    collections: reports.map(({ collection, report }) => ({
-      id: collection.id,
-      name: collection.name,
-      passed: report.passed,
-      failed: report.failed,
-      environmentChanged: report.environmentChanged ?? {},
-      steps: report.steps.map((step) => ({
-        id: step.requestId,
-        name: step.name,
-        method: step.result.method,
-        passed: step.passed,
-        status: step.result.status,
-        timeMs: step.result.timeMs,
-        error: step.result.error,
-        logs: step.result.logs ?? [],
-        failedAssertions: step.result.assertions.filter((item) => !item.passed).map((item) => item.message),
-      })),
-    })),
-  };
-}
-
-function mergeChanged(reports: { report: CollectionReport }[]): Record<string, string> {
-  const merged: Record<string, string> = {};
-  for (const { report } of reports) Object.assign(merged, report.environmentChanged ?? {});
-  return merged;
-}
-
-function print(
-  io: CliIo,
-  workspace: Workspace,
-  environment: Environment | null,
-  reports: { collection: Collection; report: CollectionReport }[],
-): void {
-  const area = environment ? `${workspace.name} · ambiente ${environment.name}` : workspace.name;
-  io.out(`Área ${area}`);
-  for (const { collection, report } of reports) {
-    io.out("");
-    io.out(`Colección ${collection.name}`);
-    for (const step of report.steps) {
-      const mark = step.passed ? "✓" : "✗";
-      const where = step.result.error
-        ? step.result.error
-        : `${step.result.status ?? "—"} · ${step.result.timeMs} ms`;
-      io.out(`  ${mark} ${step.result.method} ${step.name} — ${where}`);
-      for (const line of step.result.logs ?? []) {
-        io.out(`      · ${line}`);
-      }
-      for (const assertion of step.result.assertions) {
-        if (assertion.passed) continue;
-        io.out(`      ${assertion.message}`);
-      }
-    }
-  }
-  const passed = reports.reduce((total, entry) => total + entry.report.passed, 0);
-  const failed = reports.reduce((total, entry) => total + entry.report.failed, 0);
-  const changed = mergeChanged(reports);
-  if (Object.keys(changed).length) io.out(`Ambiente actualizado: ${Object.keys(changed).join(", ")}`);
-  io.out("");
-  io.out(`Resultado: ${passed} bien, ${failed} falló`);
-}
-
-function message(error: unknown): string {
-  if (error instanceof SyntaxError) return `El archivo no es JSON válido (${error.message})`;
-  return error instanceof Error ? error.message : String(error);
 }
