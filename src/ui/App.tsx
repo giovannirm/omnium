@@ -1,222 +1,79 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { getClient } from "../client.ts";
-import { stepPassed } from "../core/assertions.ts";
 import type { CookieView } from "../core/cookies.ts";
 import { parseCurl } from "../core/curl.ts";
-import { createRequest, uid } from "../core/factory.ts";
-import { parseWorkspace } from "../core/files.ts";
-import { importPostman } from "../core/postman.ts";
-import { toFetch, toPython } from "../core/snippets.ts";
 import { toCurl } from "../core/execute.ts";
-import type { Collection, Environment, ExecutionResult, LoadPlan, LoadSnapshot, Pair, RequestModel, Workspace } from "../core/types.ts";
-import { resolveVariables } from "../core/variables.ts";
+import { toFetch, toPython } from "../core/snippets.ts";
+import type { Pair, RequestModel } from "../core/types.ts";
 import { Editor, EnvironmentEditor } from "./Editor.tsx";
 import { Outcome } from "./Outcome.tsx";
-import { CommandPalette, type Command } from "./palette.tsx";
-import { Sidebar, type Selection } from "./Sidebar.tsx";
+import { CommandPalette } from "./palette.tsx";
+import { Sidebar } from "./Sidebar.tsx";
+import { setCollectionVariables, setGlobals, updateCollection } from "./state/model.ts";
+import { useAppState } from "./state/useAppState.ts";
 import { Mark, PairTable } from "./widgets.tsx";
-
-type LoadState = { running: boolean; points: number[]; snap: LoadSnapshot | null };
 
 export function App() {
   const client = useMemo(() => getClient(), []);
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [dir, setDir] = useState<string | null>(null);
-  const [selection, setSelection] = useState<Selection | null>(null);
-  const [results, setResults] = useState<Record<string, ExecutionResult>>({});
-  const [report, setReport] = useState<{ collectionId: string; report: Awaited<ReturnType<typeof client.run>> } | null>(null);
-  const [pane, setPane] = useState<"response" | "tests" | "load">("response");
-  const [load, setLoad] = useState<LoadState>({ running: false, points: [], snap: null });
-  const [plan, setPlan] = useState<LoadPlan>({
-    concurrency: 10,
-    rampUpMs: 1000,
-    durationMs: 8000,
-    timeoutMs: 5000,
-    pauseMs: 0,
-    maxErrorPct: 1,
-    maxP95Ms: 500,
-  });
-  const [pending, setPending] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const [modal, setModal] = useState<null | "help" | "curl" | "palette" | "snippet" | "cookies">(null);
-  const [compact, setCompact] = useState(false);
-  const [cookieRows, setCookieRows] = useState<CookieView[]>([]);
-  const [tabs, setTabs] = useState<Array<{ collectionId: string; requestId: string }>>([]);
-  const [sideW, setSideW] = useState(286);
-  const [outW, setOutW] = useState(430);
-  const [curlText, setCurlText] = useState("");
-  const [saveLabel, setSaveLabel] = useState("Listo");
-  const [query, setQuery] = useState("");
-  const [runtime, setRuntime] = useState<Record<string, string>>({});
-  const importRef = useRef<HTMLInputElement>(null);
-  const importKind = useRef<"area" | "postman">("area");
-  const hydrated = useRef(false);
-  const busy = useRef(false);
-  const sendRef = useRef<() => void>(() => undefined);
-  const modalRef = useRef(modal);
-  const workspaceRef = useRef(workspace);
-  const notifyRef = useRef<(message: string) => void>(() => undefined);
-  const commandKey = client.platform === "darwin" ? "⌘" : "Ctrl+";
-
-  useEffect(() => {
-    document.body.classList.toggle("is-desktop", client.desktop);
-    document.body.dataset.platform = client.platform;
-    let live = true;
-    void client.load().then((loaded) => {
-      if (!live) return;
-      setWorkspace(loaded.workspace);
-      setDir(loaded.dir);
-      const collection = loaded.workspace.collections[0];
-      const request = collection?.requests[0];
-      const next = collection && request ? { kind: "request" as const, collectionId: collection.id, requestId: request.id } : null;
-      if (next) {
-        setSelection(next);
-        setTabs([next]);
-      }
-      if (loaded.warning) {
-        setToast(loaded.warning);
-        window.setTimeout(() => setToast((current) => (current === loaded.warning ? null : current)), 5200);
-      }
-      void refreshCookies();
-    });
-    return () => {
-      live = false;
-    };
-  }, [client]);
-
-  useEffect(() => {
-    if (!workspace) return;
-    void client.setTitle(`Omnium — ${workspace.name}`);
-    if (!hydrated.current) {
-      hydrated.current = true;
-      return;
-    }
-    setSaveLabel("Guardando…");
-    const timer = setTimeout(() => {
-      void client
-        .save(workspace)
-        .then(() => setSaveLabel("Guardado"))
-        .catch(() => {
-          setSaveLabel("No se pudo guardar");
-          notify("No se pudo guardar el área de trabajo");
-        });
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [workspace, client]);
-
-  useEffect(() => {
-    const offTick = client.onLoadTick((snap) => {
-      setLoad((state) => ({ running: !snap.stopped, snap, points: [...state.points, snap.rps].slice(-90) }));
-    });
-    const offDone = client.onLoadDone((snap) => {
-      setLoad((state) => ({ running: false, snap, points: [...state.points, snap.rps].slice(-90) }));
-    });
-    const offMenu = client.onMenu((action) => {
-      if (action === "new") void createArea();
-      if (action === "open") void openArea();
-    });
-    return () => {
-      offTick();
-      offDone();
-      offMenu();
-    };
-  }, [client]);
-
-  useEffect(() => {
-    const fit = () => {
-      const narrow = window.innerWidth < 980;
-      setCompact(narrow);
-      if (narrow) return;
-      const room = window.innerWidth - 24;
-      const side = Math.min(280, Math.max(220, Math.round(room * 0.22)));
-      const out = Math.min(460, Math.max(300, room - side - 460));
-      setSideW(side);
-      setOutW(out);
-    };
-    fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, []);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const meta = event.metaKey || event.ctrlKey;
-      if (event.key === "Escape" && modalRef.current) {
-        event.preventDefault();
-        setModal(null);
-        return;
-      }
-      if (!meta) return;
-      if (event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setModal((current) => (current === "palette" ? null : "palette"));
-        return;
-      }
-      if (event.key.toLowerCase() === "s") {
-        event.preventDefault();
-        const current = workspaceRef.current;
-        if (!current) return;
-        setSaveLabel("Guardando…");
-        void client
-          .save(current)
-          .then(() => setSaveLabel("Guardado"))
-          .catch(() => {
-            setSaveLabel("No se pudo guardar");
-            notifyRef.current("No se pudo guardar el área de trabajo");
-          });
-        return;
-      }
-      if (event.key === "Enter" && !modalRef.current) {
-        event.preventDefault();
-        sendRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [client]);
-
-  useEffect(() => {
-    if (!workspace) return;
-    const alive = new Set(workspace.collections.flatMap((collection) => collection.requests.map((request) => request.id)));
-    setTabs((current) => {
-      const next = current.filter((tab) => alive.has(tab.requestId));
-      return next.length === current.length ? current : next;
-    });
-    setSelection((current) => {
-      if (!current || current.kind === "globals") return current;
-      if (current.kind === "request") {
-        const collection = workspace.collections.find((item) => item.id === current.collectionId);
-        if (!collection?.requests.some((request) => request.id === current.requestId)) return null;
-      }
-      if (current.kind === "collection" && !workspace.collections.some((item) => item.id === current.collectionId)) return null;
-      if (current.kind === "environment" && !workspace.environments.some((item) => item.id === current.environmentId)) return null;
-      return current;
-    });
-  }, [workspace]);
-
-  useEffect(() => {
-    const flush = () => {
-      const current = workspaceRef.current;
-      if (current) void client.save(current);
-    };
-    window.addEventListener("beforeunload", flush);
-    return () => window.removeEventListener("beforeunload", flush);
-  }, [client]);
-
-  const selected = useMemo(() => locate(workspace, selection), [workspace, selection]);
-  const environment = workspace?.environments.find((item) => item.id === workspace.activeEnvironmentId) ?? workspace?.environments[0] ?? null;
-  const activeCollection = selected && "collection" in selected ? selected.collection : null;
-  const variables = resolveVariables(environment, runtime, {
-    globals: workspace?.globals ?? [],
-    collection: activeCollection?.variables ?? [],
-  });
-
-  sendRef.current = () => {
-    void send();
-  };
-  modalRef.current = modal;
-  workspaceRef.current = workspace;
-  notifyRef.current = notify;
+  const app = useAppState({ client });
+  const {
+    workspace,
+    setWorkspace,
+    dir,
+    saveLabel,
+    openArea,
+    createArea,
+    exportArea,
+    selection,
+    tabs,
+    choose,
+    closeTab,
+    createCollection,
+    createRequestIn,
+    deleteCollection,
+    deleteRequest,
+    duplicateRequestIn,
+    moveRequest,
+    updateRequest,
+    createEnvironment,
+    deleteEnvironment,
+    updateEnvironment,
+    selected,
+    variables,
+    results,
+    report,
+    runtime,
+    setRuntime,
+    pending,
+    pane,
+    setPane,
+    send,
+    testCollection,
+    load,
+    plan,
+    setPlan,
+    startLoad,
+    toast,
+    notify,
+    cookieRows,
+    refreshCookies,
+    forgetCookies,
+    modal,
+    setModal,
+    compact,
+    sideW,
+    outW,
+    curlText,
+    setCurlText,
+    query,
+    setQuery,
+    importRef,
+    commandKey,
+    importArea,
+    beginImport,
+    startResize,
+    commands,
+  } = app;
 
   if (!workspace) {
     return (
@@ -309,7 +166,9 @@ export function App() {
           onSelect={choose}
           onCreateCollection={createCollection}
           onCreateRequest={createRequestIn}
-          onRenameCollection={(collectionId, name) => updateCollection(collectionId, (collection) => ({ ...collection, name }))}
+          onRenameCollection={(collectionId, name) =>
+            setWorkspace(updateCollection(workspace, collectionId, (collection) => ({ ...collection, name })))
+          }
           onDeleteCollection={deleteCollection}
           onTestCollection={(collectionId) => void testCollection(collectionId)}
           onCreateEnvironment={createEnvironment}
@@ -360,7 +219,7 @@ export function App() {
                 setModal("curl");
               }}
               onDelete={() => deleteRequest(selected.collection.id, selected.request.id)}
-              onDuplicate={() => duplicateRequest(selected.collection.id, selected.request)}
+                onDuplicate={() => duplicateRequestIn(selected.collection.id, selected.request.id)}
               onMove={(delta) => moveRequest(selected.collection.id, selected.request.id, delta)}
               onClearRuntime={() => setRuntime({})}
             />
@@ -377,14 +236,14 @@ export function App() {
               title="Variables globales"
               hint="Valen en todas las colecciones. Un ambiente o la colección pueden reemplazarlas."
               rows={workspace.globals}
-              onChange={(globals) => setWorkspace({ ...workspace, globals })}
+              onChange={(globals) => setWorkspace(setGlobals(workspace, globals))}
             />
           ) : selected?.kind === "collection" ? (
             <VariableStage
               title={selected.collection.name}
               hint="Estas variables viven en la colección y pisan a las del ambiente."
               rows={selected.collection.variables}
-              onChange={(rows) => updateCollection(selected.collection.id, (collection) => ({ ...collection, variables: rows }))}
+              onChange={(rows) => setWorkspace(setCollectionVariables(workspace, selected.collection.id, rows))}
             />
           ) : (
             <section className="stage empty-stage">
@@ -518,394 +377,6 @@ export function App() {
     </div>
   );
 
-  async function send(asTest = false) {
-    if (!workspace || selected?.kind !== "request" || busy.current) return;
-    busy.current = true;
-    setPending(true);
-    setPane(asTest ? "tests" : "response");
-    try {
-      const result = await client.execute({ request: selected.request, variables });
-      setResults((current) => ({ ...current, [selected.request.id]: result }));
-      setRuntime((current) => ({ ...current, ...result.extracted }));
-      remember(selected.request, result);
-      if (result.error) notify(result.error);
-      void refreshCookies();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo enviar";
-      setResults((current) => ({ ...current, [selected.request.id]: failedResult(selected.request, message) }));
-      notify(message);
-    } finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
-
-  async function testCollection(collectionId: string) {
-    if (!workspace || busy.current) return;
-    const collection = workspace.collections.find((item) => item.id === collectionId);
-    if (!collection) return;
-    busy.current = true;
-    setPending(true);
-    setPane("tests");
-    try {
-      const runVars = resolveVariables(
-        workspace.environments.find((item) => item.id === workspace.activeEnvironmentId) ?? null,
-        runtime,
-        { globals: workspace.globals, collection: collection.variables },
-      );
-      const next = await client.run({ requests: collection.requests, variables: runVars });
-      const fresh: Record<string, ExecutionResult> = {};
-      for (const step of next.steps) fresh[step.requestId] = step.result;
-      setResults((current) => ({ ...current, ...fresh }));
-      setReport({ collectionId, report: next });
-      setRuntime((current) => ({ ...current, ...diffVars(runVars, next.variables) }));
-      const cancelled = next.steps.some((step) => step.result.error === "Petición cancelada");
-      notify(cancelled ? "Prueba cancelada" : next.failed ? `${next.failed} peticiones fallaron` : `${next.passed} peticiones bien`);
-      void refreshCookies();
-    } catch (error) {
-      notify(error instanceof Error ? error.message : "No se pudo probar la colección");
-    } finally {
-      busy.current = false;
-      setPending(false);
-    }
-  }
-
-  async function startLoad() {
-    if (selected?.kind !== "request" || load.running || busy.current) return;
-    setPane("load");
-    setLoad({ running: true, points: [], snap: null });
-    try {
-      const snap = await client.startLoad({ request: selected.request, variables, plan });
-      setLoad((state) => ({ running: false, snap, points: state.points }));
-    } catch (error) {
-      setLoad((state) => ({ ...state, running: false }));
-      notify(error instanceof Error ? error.message : "La carga no arrancó");
-    }
-  }
-
-  function remember(request: RequestModel, result: ExecutionResult) {
-    setWorkspace((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        history: [
-          {
-            id: uid("hist"),
-            at: new Date().toISOString(),
-            requestId: request.id,
-            name: request.name,
-            method: request.method,
-            url: result.url || request.url,
-            status: result.status,
-            timeMs: result.timeMs,
-            ok: stepPassed(result),
-            error: result.error,
-          },
-          ...current.history,
-        ].slice(0, 40),
-      };
-    });
-  }
-
-  function createCollection() {
-    if (!workspace) return;
-    const id = uid("col");
-    const request = createRequest({ name: "Nueva petición", method: "GET", url: "" });
-    setWorkspace({
-      ...workspace,
-      collections: [...workspace.collections, { id, name: "Nueva colección", variables: [], requests: [request] }],
-    });
-    choose({ kind: "request", collectionId: id, requestId: request.id });
-  }
-
-  function createRequestIn(collectionId: string) {
-    const request = createRequest();
-    updateCollection(collectionId, (collection) => ({ ...collection, requests: [...collection.requests, request] }));
-    choose({ kind: "request", collectionId, requestId: request.id });
-  }
-
-  function deleteCollection(collectionId: string) {
-    if (!workspace) return;
-    if (!window.confirm("¿Eliminar esta colección?")) return;
-    setWorkspace({ ...workspace, collections: workspace.collections.filter((collection) => collection.id !== collectionId) });
-  }
-
-  function deleteRequest(collectionId: string, requestId: string) {
-    if (!window.confirm("¿Eliminar esta petición?")) return;
-    updateCollection(collectionId, (collection) => ({
-      ...collection,
-      requests: collection.requests.filter((request) => request.id !== requestId),
-    }));
-    closeTab(requestId);
-  }
-
-  function duplicateRequest(collectionId: string, request: RequestModel) {
-    const copy = createRequest({
-      ...structuredClone(request),
-      id: uid("req"),
-      name: `${request.name} copia`,
-      assertions: request.assertions.map((item) => ({ ...item, id: uid("assert") })),
-      extractors: request.extractors.map((item) => ({ ...item, id: uid("extract") })),
-    });
-    updateCollection(collectionId, (collection) => {
-      const index = collection.requests.findIndex((item) => item.id === request.id);
-      const requests = [...collection.requests];
-      requests.splice(index + 1, 0, copy);
-      return { ...collection, requests };
-    });
-    choose({ kind: "request", collectionId, requestId: copy.id });
-  }
-
-  function moveRequest(collectionId: string, requestId: string, delta: number) {
-    updateCollection(collectionId, (collection) => {
-      const index = collection.requests.findIndex((item) => item.id === requestId);
-      const next = index + delta;
-      if (index < 0 || next < 0 || next >= collection.requests.length) return collection;
-      const requests = [...collection.requests];
-      const [item] = requests.splice(index, 1);
-      if (!item) return collection;
-      requests.splice(next, 0, item);
-      return { ...collection, requests };
-    });
-  }
-
-  function createEnvironment() {
-    if (!workspace) return;
-    const environment: Environment = { id: uid("env"), name: "Nuevo ambiente", variables: [] };
-    setWorkspace({ ...workspace, environments: [...workspace.environments, environment] });
-    setSelection({ kind: "environment", environmentId: environment.id });
-  }
-
-  function deleteEnvironment(environmentId: string) {
-    if (!workspace) return;
-    if (workspace.environments.length < 2) {
-      notify("Deja al menos un ambiente");
-      return;
-    }
-    const environments = workspace.environments.filter((item) => item.id !== environmentId);
-    setWorkspace({
-      ...workspace,
-      environments,
-      activeEnvironmentId: workspace.activeEnvironmentId === environmentId ? (environments[0]?.id ?? null) : workspace.activeEnvironmentId,
-    });
-    setSelection(null);
-  }
-
-  function updateRequest(collectionId: string, request: RequestModel) {
-    updateCollection(collectionId, (collection) => ({
-      ...collection,
-      requests: collection.requests.map((item) => (item.id === request.id ? request : item)),
-    }));
-  }
-
-  function updateCollection(collectionId: string, change: (collection: Collection) => Collection) {
-    setWorkspace((current) => {
-      if (!current) return current;
-      return { ...current, collections: current.collections.map((collection) => (collection.id === collectionId ? change(collection) : collection)) };
-    });
-  }
-
-  function updateEnvironment(environment: Environment) {
-    if (!workspace) return;
-    setWorkspace({
-      ...workspace,
-      environments: workspace.environments.map((item) => (item.id === environment.id ? environment : item)),
-    });
-  }
-
-  async function openArea() {
-    const opened = await client.open();
-    if (!opened) return;
-    adopt(opened.workspace, opened.dir);
-  }
-
-  async function createArea() {
-    const created = await client.create();
-    if (!created) return;
-    adopt(created.workspace, created.dir);
-  }
-
-  async function exportArea() {
-    if (!workspace) return;
-    const done = await client.exportFile(workspace);
-    if (done) notify("Área exportada");
-  }
-
-  async function importArea(file: File) {
-    try {
-      const raw = JSON.parse(await file.text()) as unknown;
-      if (importKind.current === "postman") {
-        const collection = importPostman(raw);
-        setWorkspace((current) => (current ? { ...current, collections: [...current.collections, collection] } : current));
-        const request = collection.requests[0];
-        if (request) choose({ kind: "request", collectionId: collection.id, requestId: request.id });
-        notify(`Importada la colección ${collection.name}`);
-        return;
-      }
-      const parsed = parseWorkspace(raw);
-      if (!window.confirm("Esto reemplaza colecciones, ambientes e historial de esta área.")) return;
-      adopt(parsed, dir, true);
-      notify("Área importada");
-    } catch (error) {
-      notify(error instanceof SyntaxError ? "El archivo no es JSON" : error instanceof Error ? error.message : "No se pudo importar");
-    }
-  }
-
-  function choose(next: Selection) {
-    setSelection(next);
-    if (next.kind === "request") {
-      setTabs((current) => {
-        const without = current.filter((tab) => tab.requestId !== next.requestId);
-        return [...without, next].slice(-10);
-      });
-    }
-  }
-
-  function closeTab(requestId: string) {
-    const index = tabs.findIndex((tab) => tab.requestId === requestId);
-    const next = tabs.filter((tab) => tab.requestId !== requestId);
-    setTabs(next);
-    if (selection?.kind === "request" && selection.requestId === requestId) {
-      const neighbor = next[Math.min(index, next.length - 1)] ?? null;
-      setSelection(neighbor ? { kind: "request", collectionId: neighbor.collectionId, requestId: neighbor.requestId } : null);
-    }
-  }
-
-  function beginImport(kind: "area" | "postman") {
-    importKind.current = kind;
-    importRef.current?.click();
-  }
-
-  function startResize(which: "side" | "out", origin: number, width: number) {
-    const move = (event: MouseEvent) => {
-      const delta = event.clientX - origin;
-      const room = window.innerWidth - 520;
-      if (which === "side") setSideW(Math.min(480, Math.max(220, Math.min(width + delta, room - outW))));
-      else setOutW(Math.min(680, Math.max(300, Math.min(width - delta, room - sideW))));
-    };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      window.removeEventListener("blur", up);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-    window.addEventListener("blur", up);
-  }
-
-  function commands(): Command[] {
-    if (!workspace) return [];
-    const items: Command[] = [
-      { id: "send", label: "Enviar petición", hint: `${commandKey}↩`, run: () => void send() },
-      { id: "test", label: "Probar afirmaciones", hint: "Petición actual", run: () => void send(true) },
-      { id: "load", label: "Abrir carga", hint: "Usuarios y percentiles", run: () => setPane("load") },
-      { id: "code", label: "Generar código", hint: "fetch y Python", run: () => setModal("snippet") },
-      { id: "postman", label: "Importar colección Postman", hint: "v2.1", run: () => beginImport("postman") },
-      { id: "globals", label: "Variables globales", hint: "Toda el área", run: () => choose({ kind: "globals" }) },
-      { id: "cookies", label: "Ver cookies", hint: "Sesión local", run: () => { setModal("cookies"); void refreshCookies(); } },
-      { id: "help", label: "Ayuda", hint: "Atajos y ejemplo", run: () => setModal("help") },
-    ];
-    for (const collection of workspace.collections) {
-      items.push({
-        id: `vars-${collection.id}`,
-        label: `Variables de ${collection.name}`,
-        hint: "Colección",
-        run: () => choose({ kind: "collection", collectionId: collection.id }),
-      });
-      for (const request of collection.requests) {
-        items.push({
-          id: request.id,
-          label: request.name,
-          hint: `${collection.name} · ${request.method}`,
-          run: () => choose({ kind: "request", collectionId: collection.id, requestId: request.id }),
-        });
-      }
-    }
-    return items;
-  }
-
-  function adopt(next: Workspace, nextDir: string | null, persist = false) {
-    if (!persist) hydrated.current = false;
-    setWorkspace(next);
-    setDir(nextDir);
-    setResults({});
-    setReport(null);
-    setRuntime({});
-    const collection = next.collections[0];
-    const request = collection?.requests[0];
-    const selectedNext = collection && request ? { kind: "request" as const, collectionId: collection.id, requestId: request.id } : null;
-    setSelection(selectedNext);
-    setTabs(selectedNext ? [selectedNext] : []);
-  }
-
-  async function refreshCookies() {
-    try {
-      setCookieRows(await client.listCookies());
-    } catch {
-      return;
-    }
-  }
-
-  async function forgetCookies() {
-    if (!window.confirm("¿Olvidar las cookies de esta sesión?")) return;
-    await client.clearCookies();
-    setCookieRows([]);
-    notify("Cookies olvidadas");
-  }
-
-  function notify(message: string) {
-    setToast(message);
-    window.setTimeout(() => setToast((current) => (current === message ? null : current)), 3200);
-  }
-}
-
-function failedResult(request: RequestModel, message: string): ExecutionResult {
-  return {
-    ok: false,
-    error: message,
-    requestId: request.id,
-    name: request.name,
-    method: request.method,
-    url: request.url,
-    finalUrl: request.url,
-    status: null,
-    statusText: "",
-    timeMs: 0,
-    sizeBytes: 0,
-    headers: [],
-    bodyText: "",
-    bodyJson: null,
-    binary: false,
-    truncated: false,
-    assertions: [],
-    extracted: {},
-    missing: [],
-  };
-}
-
-function locate(workspace: Workspace | null, selection: Selection | null) {
-  if (!workspace || !selection) return null;
-  if (selection.kind === "globals") return { kind: "globals" as const };
-  if (selection.kind === "environment") {
-    const environment = workspace.environments.find((item) => item.id === selection.environmentId);
-    return environment ? { kind: "environment" as const, environment } : null;
-  }
-  if (selection.kind === "collection") {
-    const collection = workspace.collections.find((item) => item.id === selection.collectionId);
-    return collection ? { kind: "collection" as const, collection } : null;
-  }
-  const collection = workspace.collections.find((item) => item.id === selection.collectionId);
-  const request = collection?.requests.find((item) => item.id === selection.requestId);
-  if (!collection || !request) return null;
-  return { kind: "request" as const, collection, request };
-}
-
-function diffVars(before: Record<string, string>, after: Record<string, string>): Record<string, string> {
-  const changed: Record<string, string> = {};
-  for (const [key, value] of Object.entries(after)) {
-    if (before[key] !== value) changed[key] = value;
-  }
-  return changed;
 }
 
 function CookiesDialog({ rows, onClose, onClear }: { rows: CookieView[]; onClose: () => void; onClear: () => void }) {

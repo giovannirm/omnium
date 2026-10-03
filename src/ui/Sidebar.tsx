@@ -1,13 +1,10 @@
 import type { Workspace } from "../core/types.ts";
 import { stepPassed } from "../core/assertions.ts";
 import type { ExecutionResult } from "../core/types.ts";
+import type { Selection } from "./state/model.ts";
 import { formatWhen } from "./widgets.tsx";
 
-export type Selection =
-  | { kind: "request"; collectionId: string; requestId: string }
-  | { kind: "environment"; environmentId: string }
-  | { kind: "globals" }
-  | { kind: "collection"; collectionId: string };
+export type { Selection };
 
 export function Sidebar({
   workspace,
