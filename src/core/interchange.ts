@@ -1,3 +1,6 @@
+import { importBru } from "./bruno.ts";
+import { importInsomnia } from "./insomnia.ts";
+import { importJmeter } from "./jmeter.ts";
 import { importPostman } from "./postman.ts";
 import type { Collection } from "./types.ts";
 
@@ -52,6 +55,9 @@ export function importCollection(text: string, fileName?: string): ImportResult 
     if (json === undefined) throw new Error("El archivo no es JSON válido");
     return importPostman(json);
   }
+  if (format === "insomnia") return importInsomnia(text);
+  if (format === "bruno") return importBru(text);
+  if (format === "jmeter") return importJmeter(text);
   throw new Error(`El formato ${FORMATS[format].label} todavía no está soportado en esta versión`);
 }
 
@@ -59,6 +65,8 @@ function sniffJson(json: unknown): DetectedFormat {
   if (Array.isArray(json)) return sniffArray(json);
   const record = json as Record<string, unknown>;
   if (typeof record.__export_format === "number") return "insomnia";
+  // v5 serializado como JSON: el discriminador es `type: *.insomnia.rest/5.0`.
+  if (typeof record.type === "string" && record.type.includes("insomnia.rest")) return "insomnia";
   if (record._type === "request-import") return "thunder";
   if (record.info && record.item) return "postman";
   if (record.collections && record.version === 1) return "omnium-area";
@@ -85,6 +93,7 @@ function isBruno(text: string, fileName?: string): boolean {
 
 function isInsomniaYaml(text: string, fileName?: string): boolean {
   if (/^\s*type: .*insomnia/m.test(text)) return true;
+  if (/^\s*__export_format:/m.test(text)) return true;
   const ext = extensionOf(fileName);
   if ((ext === ".yaml" || ext === ".yml") && /insomnia/i.test(text)) return true;
   return false;

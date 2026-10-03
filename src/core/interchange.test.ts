@@ -75,9 +75,27 @@ test("importCollection rechaza un área como colección, con error claro", () =>
 });
 
 test("importCollection rechaza formatos no soportados nombrando el formato", () => {
+  const hoppscotch = JSON.stringify({ v: 2, items: [{ name: "Ping", method: "GET", url: "https://api.test" }] });
+  assert.throws(() => importCollection(hoppscotch, "x.json"), /Hoppscotch/);
+});
+
+test("importCollection rechaza planes JMeter vacíos nombrando el motivo", () => {
+  const jmeter = '<jmeterTestPlan version="1.2"></jmeterTestPlan>';
+  assert.throws(() => importCollection(jmeter, "x.jmx"), /no tiene peticiones/);
+});
+
+test("importCollection explica un .bru sin petición", () => {
+  assert.throws(() => importCollection("meta {\n  name: Vacío\n}\n", "x.bru"), /método HTTP/);
+});
+
+test("importCollection explica un Insomnia v4 vacío (sin workspace)", () => {
   const insomnia = JSON.stringify({ __export_format: 4, resources: [] });
-  assert.throws(() => importCollection(insomnia, "export.json"), /Insomnia/);
-  assert.throws(() => importCollection("meta {\n}\nhttp {\n}\n", "x.bru"), /Bruno/);
+  assert.throws(() => importCollection(insomnia, "export.json"), /workspace de colección/);
+});
+
+test("detecta Insomnia v5 JSON por el discriminador type", () => {
+  const text = JSON.stringify({ type: "collection.insomnia.rest/5.0", name: "Col", collection: [] });
+  assert.equal(detectFormat(text, "export.json"), "insomnia");
 });
 
 test("importCollection avisa si el JSON está roto", () => {

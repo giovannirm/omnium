@@ -88,20 +88,49 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
         roundtrip import→export→import)
   - [x] Bug propio atrapado: `??` no cae con string vacío en `joinScripts`; raíz duplicada
         en cada petición (el motor ya corre colección por petición) — corregido con test
-- [ ] **T3 — Insomnia (v4 JSON + v5 YAML)**
-  - [ ] `yamlMini.ts` (subconjunto seguro, sin dependencias) + tests
-  - [ ] `insomnia.ts`: `__export_format: 3|4` (resources) y v5 (`insomnia.yaml`: resources con
-        `body`/`headers`/`authentication`); ambiente → colección/variables
-  - [ ] Tests: v4 JSON y v5 YAML con script multilínea
-- [ ] **T4 — Bruno (`.bru`)**
-  - [ ] Parser `bruno.ts`: `meta/params/headers/auth/body/http/script/assert` (+ `folder`)
-  - [ ] Export: colección → archivos `.bru` (request por archivo; ver límite en Progreso)
-  - [ ] Tests: request con auth bearer + assertions
-- [ ] **T5 — JMeter (`.jmx`)**
-  - [ ] Parser dirigido de XML (tags conocidos, sin dependencia): ThreadGroup → colección,
-        HTTPSamplerProxy → petición (método/dominio/puerto/ruta/query), headers, body,
-        ResponseAssertion → aserciones, CSVDataSet → variables
-  - [ ] Tests: fixture JMX con2 samplers + assertion + CSV
+- [x] **T3 — Insomnia (v4 JSON + v5 YAML)** ✅
+  - [x] `yamlMini.ts` (362 líneas, sin dependencias): mapas/secuencias por sangría (incluye
+        secuencia a la misma sangría de su clave), escalares planos/citados, flow `[..]`/`{..}`,
+        bloques `|`/`|-`/`>` con chomping, comentarios, `---`; errores con número de línea
+  - [x] `insomnia.ts` (392): `__export_format: 3|4` (resources, JSON o YAML) y v5
+        (`collection.insomnia.rest/5.0`, YAML o JSON serializado); carpetas → prefijo;
+        ambiente base → variables, sub-entornos → avisos; `{{ _.x }}` → `{{x}}`;
+        scripts `preRequest`/`afterResponse` multilínea; auth basic/bearer/apikey y
+        aviso para oauth2/etc.; API `insomnia.*` → aviso honesto (usa pm/omnium);
+        export v4 JSON reconstruyendo carpetas desde el prefijo ` / `
+  - [x] Tests: 11 yamlMini + 4 insomnia (v4 con avisos, v5 con script multilínea y body
+        en bloque, roundtrip import→export→import, dispatcher) + 2 de detección
+  - [x] Bugs propios atrapados: export omitía peticiones de raíz; `vars()` dejaba espacio
+        sobrante en `{{base_url }}`; orden carpetas/raíz en el roundtrip
+- [x] **T4 — Bruno (`.bru`)** ✅
+  - [x] Parser `bruno.ts` (438): bloques `etiqueta { … }` con cierre en columna 0;
+        `meta` (ignora `tags`), método/`http` (método custom → aviso + GET),
+        `params:query`/`params:path` (`~` deshabilitado, `:clave` sustituida en URL),
+        `headers`, `auth:*` (bearer/basic/apikey; oauth2/inherit → aviso),
+        `body:*` (json/text/xml → crudo dedent; form-urlencoded/multipart → pares;
+        graphql → texto + aviso), `script:pre-request`/`post-response`, `assert`
+        → aserciones nativas (`$res.status`, `$res.body.x`, `$res.headers.x`, ops
+        eq/notEq/contains/isDefined/gt…), `docs` → descripción, `settings.
+        followRedirects`; `tests`/`vars:*` → aviso (API bru.*); `folder.bru` → error claro
+  - [x] Export: `exportBru(request)` → un `.bru` por petición (meta, método,
+        params/headers con `~`, auth, body, scripts, assert, settings, docs)
+  - [x] Tests: fixture completo (bearer + 3 asserts + scripts + ~disabled),
+        roundtrip, avisos oauth2/tests, folder error, params:path + método custom
+  - [x] **Límite documentado (Progreso)**: la exportación Bruno es un archivo por
+        petición y NO recrea carpetas/`bruno.json` (Bruno no importa `.bru` sueltos;
+        el usuario los coloca en su colección existente)
+- [x] **T5 — JMeter (`.jmx`)**
+  - [x] `xmlMini.ts` (parser XML propio: attrs, texto, comentarios, CDATA,
+        entidades, self-closing, errores con nº de línea) + `jmeter.ts`
+        (TestPlan → nombre/variables, ThreadGroup → peticiones con headers y
+        aserciones por scope, HTTPSamplerProxy → URL `protocol://dominio[:puerto]/ruta`
+        + query/`postBodyRaw` → json/text o args → form/params, ResponseAssertion
+        dirigida: código=EQUALS → status eq/neq, datos=CONTAINS → body contains,
+        CSVDataSet → variables vacías + aviso)
+  - [x] Tests: fixture JMX con 2 samplers + assertion + CSV + scope, errores,
+        método no soportado, CSV sin nombres, aserción no mapeable, URL absoluta
+  - [x] Límites: plan de carga (hilos) no se importa (aviso); extractores
+        `JSONPostProcessor` y plantillas `IfController` quedan fuera del scope dirigido
 - [ ] **T6 — Hoppscotch + Thunder Client**
   - [ ] `hoppscotch.ts`: export JSON (`v`, `items` recursivos con folders)
   - [ ] `thunder.ts`: export JSON (`_type: request-import`, `requests` / colección)
@@ -135,6 +164,13 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 
 ## Progreso
 
+- **Límite de exportación Bruno** (definido en T4): un `.bru` por petición
+  (descarga por archivo); no se recrean carpetas ni `bruno.json` — Bruno no
+  importa `.bru` sueltos, el usuario los coloca en su colección existente.
+
 - [x] Exploración (postman.ts, script.ts, tipos, UI/CLI actuales) y decisión de alcance
 - [x] Documento creado (antes de la primera escritura de código)
 - [x] T1+T2 ✅ (99/99 tests, tsc + build verdes) → T3 → T9
+- [x] T3 ✅ (115/115 tests, tsc + build verdes) → T4
+- [x] T4 ✅ (120/120 tests, tsc + build verdes) → T5
+- [x] T5 ✅ (127/127 tests, tsc + build verdes) → T6
