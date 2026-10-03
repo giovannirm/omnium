@@ -52,8 +52,18 @@ test("detecta Hoppscotch por v + items", () => {
   assert.equal(detectFormat(text, "export.json"), "hoppscotch");
 });
 
+test("detecta Hoppscotch por su HoppCollection (name + folders + requests)", () => {
+  const text = JSON.stringify({ v: 11, name: "API", folders: [], requests: [] });
+  assert.equal(detectFormat(text, "export.json"), "hoppscotch");
+});
+
 test("detecta Thunder Client por _type request-import", () => {
   const text = JSON.stringify({ _type: "request-import", requests: [{ name: "Ping", method: "get", url: "https://api.test" }] });
+  assert.equal(detectFormat(text, "export.json"), "thunder");
+});
+
+test("detecta Thunder Client por su Database Format v3", () => {
+  const text = JSON.stringify({ version: "1.2", client: "Thunder Client", name: "DB", requests: [], folders: [] });
   assert.equal(detectFormat(text, "export.json"), "thunder");
 });
 
@@ -74,9 +84,24 @@ test("importCollection rechaza un área como colección, con error claro", () =>
   assert.throws(() => importCollection(AREA, "area.json"), /área de Omnium/);
 });
 
-test("importCollection rechaza formatos no soportados nombrando el formato", () => {
-  const hoppscotch = JSON.stringify({ v: 2, items: [{ name: "Ping", method: "GET", url: "https://api.test" }] });
-  assert.throws(() => importCollection(hoppscotch, "x.json"), /Hoppscotch/);
+test("importCollection rechaza formatos desconocidos nombrando el motivo", () => {
+  assert.throws(() => importCollection(JSON.stringify({ foo: 1 }), "x.json"), /No se reconoce/);
+});
+
+test("importCollection trae colecciones Hoppscotch y Thunder", () => {
+  const hopp = importCollection(
+    JSON.stringify({ name: "H", folders: [], requests: [{ name: "P", method: "GET", endpoint: "https://api.test" }] }),
+    "h.json",
+  );
+  assert.equal(hopp.collection.name, "H");
+  assert.equal(hopp.collection.requests.length, 1);
+
+  const thunder = importCollection(
+    JSON.stringify({ client: "Thunder Client", name: "T", folders: [], requests: [{ name: "P", method: "GET", url: "https://api.test" }] }),
+    "t.json",
+  );
+  assert.equal(thunder.collection.name, "T");
+  assert.equal(thunder.collection.requests.length, 1);
 });
 
 test("importCollection rechaza planes JMeter vacíos nombrando el motivo", () => {

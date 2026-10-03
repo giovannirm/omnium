@@ -131,10 +131,22 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
         método no soportado, CSV sin nombres, aserción no mapeable, URL absoluta
   - [x] Límites: plan de carga (hilos) no se importa (aviso); extractores
         `JSONPostProcessor` y plantillas `IfController` quedan fuera del scope dirigido
-- [ ] **T6 — Hoppscotch + Thunder Client**
-  - [ ] `hoppscotch.ts`: export JSON (`v`, `items` recursivos con folders)
-  - [ ] `thunder.ts`: export JSON (`_type: request-import`, `requests` / colección)
-  - [ ] Tests por formato (fixture de cada uno)
+- [x] **T6 — Hoppscotch + Thunder Client**
+  - [x] `hoppscotch.ts`: HoppCollection real (`name`, `folders` anidadas,
+        `requests` con `endpoint`, body por `contentType`, auth heredada
+        `inherit`, scripts `preRequestScript`/`testScript`, `variables`);
+        refs por id en `folder.requests` (formato v9) y objetos embebidos;
+        GraphQL (url+query o body graphql) → aviso
+  - [x] `thunder.ts`: `_type: "request-import"` + Database Format v3
+        (`client: "Thunder Client"`) + array de peticiones; carpetas por
+        `containerId` → prefijo `Carpeta / `; `tests` → aserciones nativas
+        (ops limitadas a `OPS_FOR`); `settings.followRedirects`; auth
+        none/bearer/basic/apikey; scripts `tc.*` importados con aviso
+  - [x] Detección ampliada: `name+folders+requests` → hoppscotch;
+        `client: "Thunder Client"` → thunder (sniffs previos conservados)
+  - [x] Tests por formato (3 c/u) + tests de detección en interchange
+  - [x] Límites: GraphQL no se importa (URL sola + aviso); timeout Thunder
+        ignorado (unidad sin confirmar); environments .env fuera de alcance
 - [ ] **T7 — UI: importar/exportar**
   - [ ] Comando único "Importar colección…" (auto-detección + selector de formato + avisos);
         reemplaza el kind fijo `postman` de `beginImport`
@@ -174,3 +186,5 @@ diálogo de import en UI + export a Postman/Insomnia/Bruno.
 - [x] T3 ✅ (115/115 tests, tsc + build verdes) → T4
 - [x] T4 ✅ (120/120 tests, tsc + build verdes) → T5
 - [x] T5 ✅ (127/127 tests, tsc + build verdes) → T6
+- [x] T6 ✅ (136/136 tests, tsc + build verdes) → T7 — los 6 importadores
+      quedaron cableados en el dispatcher (sin formatos "no soportados")
