@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getClient } from "../client.ts";
 import type { CookieView } from "../core/cookies.ts";
 import { parseCurl } from "../core/curl.ts";
@@ -14,8 +14,29 @@ import { setCollectionVariables, setGlobals, updateCollection } from "./state/mo
 import { useAppState } from "./state/useAppState.ts";
 import { Mark, PairTable, ScriptEditor } from "./widgets.tsx";
 
+type Theme = "light" | "dark";
+
+const THEME_KEY = "omnium.theme";
+
+function readTheme(): Theme {
+  try {
+    return localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function saveTheme(theme: Theme): void {
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Theme persistence is a UI preference; keep the selected theme for this session if storage is unavailable.
+  }
+}
+
 export function App() {
   const client = useMemo(() => getClient(), []);
+  const [theme, setTheme] = useState<Theme>(readTheme);
   const app = useAppState({ client });
   const {
     workspace,
@@ -77,9 +98,14 @@ export function App() {
     commands,
   } = app;
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    saveTheme(theme);
+  }, [theme]);
+
   if (!workspace) {
     return (
-      <div className="boot">
+      <div className="boot" data-theme={theme}>
         <Mark />
         <p>Abriendo Omnium…</p>
       </div>
@@ -87,7 +113,7 @@ export function App() {
   }
 
   return (
-    <div className="app" aria-busy={pending}>
+    <div className="app" data-theme={theme} aria-busy={pending}>
       <header className="topbar">
         <div className="brand">
           <Mark />
@@ -113,6 +139,14 @@ export function App() {
           <span className="save-state" role="status">
             {saveLabel}
           </span>
+          <button
+            type="button"
+            className="ghost theme-toggle"
+            aria-pressed={theme === "dark"}
+            onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
+          >
+            {theme === "dark" ? "Modo claro" : "Modo oscuro"}
+          </button>
           {pending ? (
             <button type="button" className="ghost danger" onClick={() => void client.cancelHttp()}>
               Cancelar
